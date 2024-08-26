@@ -1,10 +1,8 @@
 <doctype html>
-<!-- Copyright 2020, Cem Yuksel, University of Utah -->
 <html>
 <head>
-<title>CS 4600 - Project 7</title>
+<title>Final project</title>
 <script type="text/javascript" id="includedscript" src="project7.js"></script>
-<script type="text/javascript" src="FS.js"></script>
 <script type="text/javascript" src="obj.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js"></script>
 
@@ -118,7 +116,7 @@ function InitMassSprings() {
     const rowDistance = 30;  // Distanza tra le file di birilli
     const initialX = 0;      // Posizione iniziale della prima fila
     const initialZ = 100;    // Posizione iniziale della prima fila, spostata indietro rispetto alla palla
-    const pinHeight = 1; // Altezza dei birilli sopra il pavimento
+    const pinHeight = 0; // Altezza dei birilli sopra il pavimento
 
     // Posizionare il pavimento a y = 0
     let floor = new Floor('floor.obj', new Vec3(0, 0, -1));
@@ -773,11 +771,12 @@ class MassSpring {
 
     let cBoundingBox = this.currentBoundingBox();
     for (let i = 0; i < massSprings.length; i++) {
-        if (massSprings[i] !== this) {
+        if (massSprings[i] !== this && !(massSprings[i] instanceof Floor)) {
             let otherBoundingBox = massSprings[i].currentBoundingBox();
             if (detectAABBCollision(cBoundingBox, otherBoundingBox)) {
                 flagCollision = true;
                 boundingBoxes.push(otherBoundingBox);  // Aggiungi la bounding box rilevata
+				console.log(this, massSprings[i]);
             }
         }
     }
@@ -931,6 +930,16 @@ class Floor extends MassSpring {
         this.damping = 1;
         this.restitution = 0.8;
     }
+
+	// Sovrascrivi il metodo simTimeStep per non fare nulla
+	simTimeStep() {
+		// Non fare nulla per il pavimento
+    }
+
+    // Sovrascrivi il metodo mouseDown per impedire l'interazione
+    mouseDown() {
+        return false; // Non consentire la selezione del pavimento
+    }
 }
 
 
@@ -942,6 +951,11 @@ class Floor extends MassSpring {
 // Below is the mass-spring system code
 ///////////////////////////////////////////////////////////////////////////////////
 function detectAABBCollision(boxA, boxB) {
+
+    if (boxA instanceof Floor || boxB instanceof Floor) {
+        return false;
+    }
+
     return (boxA.min.x <= boxB.max.x && boxA.max.x >= boxB.min.x) &&
            (boxA.min.y <= boxB.max.y && boxA.max.y >= boxB.min.y) &&
            (boxA.min.z <= boxB.max.z && boxA.max.z >= boxB.min.z);
@@ -1042,6 +1056,11 @@ window.onload = function() {
 		DrawScene();
 	}
 
+	
+	SetGravity  ( document.getElementById('gravity') );
+	SetMass     ( document.getElementById('mass') );
+	SetStiffness( document.getElementById('stiffness') );
+	SetDamping  ( document.getElementById('damping') );
 	SetShininess( document.getElementById('shininess-exp') );
 
 	DrawScene();
@@ -1104,6 +1123,7 @@ function SetTimeStepSize(param)
 function SetGravity(param) {
     var v = param.value;
     var s = v / 20;
+	console.log(s);
     document.getElementById('gravity-value').innerText = s.toFixed(2);
     for (let i = 0; i < massSprings.length; i++) {
         massSprings[i].gravity.y = (-s);
@@ -1113,7 +1133,8 @@ function SetGravity(param) {
 function SetMass(param) {
     var v = param.value;
     var s = v / 200;
-    document.getElementById('mass-value').innerText = s.toFixed(3);
+    console.log(s);
+	document.getElementById('mass-value').innerText = s.toFixed(3);
 
     // Loop through all massSprings and set the mass for each
     for (let i = 0; i < massSprings.length; i++) {
@@ -1124,6 +1145,7 @@ function SetMass(param) {
 function SetStiffness(param) {
     var v = param.value;
     var s = v / 20;
+	console.log(s);
     document.getElementById('stiffness-value').innerText = s.toFixed(2);
 
     // Loop through all massSprings and set the stiffness for each
@@ -1135,6 +1157,7 @@ function SetStiffness(param) {
 function SetDamping(param) {
     var v = param.value;
     var s = v / 20;
+	console.log(s);
     document.getElementById('damping-value').innerText = s.toFixed(2);
 
     // Loop through all massSprings and set the damping for each
