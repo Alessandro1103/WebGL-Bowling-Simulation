@@ -1,0 +1,3224 @@
+<!--Devo capire come mettere piu oggetti, devo probabilmente chiamare due volte la classe mesh, ma la classe mesh drawer non esiste, quindi domani da chiedere a chat. Vedere il codice su webgl fundamentals dove ci sono piu oggetti 2D, sicuramente mi darà qualcosa di utile-->
+<!--Prova duplicare gli meshdrawer etc, non penso basti duplicare gli obj-->
+<doctype html>
+<!-- Copyright 2020, Cem Yuksel, University of Utah -->
+<html>
+<head>
+<title>CS 4600 - Project 7</title>
+<script type="text/javascript" id="includedscript" src="project7.js"></script>
+<script type="text/javascript" src="obj.js"></script>
+
+<script type="text/javascript">
+///////////////////////////////////////////////////////////////////////////////////
+// Below is the code for the object that draws lines.
+///////////////////////////////////////////////////////////////////////////////////
+class BoxDrawer {
+	constructor()
+	{
+		// Compile the shader program
+		this.prog = InitShaderProgram( boxVS, boxFS );
+		
+		// Get the ids of the uniform variables in the shaders
+		this.mvp = gl.getUniformLocation( this.prog, 'mvp' );
+		
+		// Get the ids of the vertex attributes in the shaders
+		this.vertPos = gl.getAttribLocation( this.prog, 'pos' );
+		
+		// Create the buffer objects
+		
+		this.vertbuffer = gl.createBuffer();
+		var pos = [
+			-1, -1, -1,
+			-1, -1,  1,
+			-1,  1, -1,
+			-1,  1,  1,
+			 1, -1, -1,
+			 1, -1,  1,
+			 1,  1, -1,
+			 1,  1,  1 ];
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.vertbuffer);
+		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW);
+
+		this.linebuffer = gl.createBuffer();
+		var line = [
+			0,1,   1,3,   3,2,   2,0,
+			4,5,   5,7,   7,6,   6,4,
+			0,4,   1,5,   3,7,   2,6 ];
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.linebuffer);
+		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint8Array(line), gl.STATIC_DRAW);
+	}
+	draw( trans )
+	{
+		// Draw the line segments
+		gl.useProgram( this.prog );
+		gl.uniformMatrix4fv( this.mvp, false, trans );
+		gl.bindBuffer( gl.ARRAY_BUFFER, this.vertbuffer );
+		gl.vertexAttribPointer( this.vertPos, 3, gl.FLOAT, false, 0, 0 );
+		gl.enableVertexAttribArray( this.vertPos );
+		gl.bindBuffer( gl.ELEMENT_ARRAY_BUFFER, this.linebuffer );
+		gl.drawElements( gl.LINES, 24, gl.UNSIGNED_BYTE, 0 );
+	}
+}
+// Vertex shader source code
+var boxVS = `
+	attribute vec3 pos;
+	uniform mat4 mvp;
+	void main()
+	{
+		gl_Position = mvp * vec4(pos,1);
+	}
+`;
+// Fragment shader source code
+var boxFS = `
+	precision mediump float;
+	void main()
+	{
+		gl_FragColor = vec4(1,1,1,1);
+	}
+`;
+///////////////////////////////////////////////////////////////////////////////////
+</script>
+
+<script type="text/javascript">
+///////////////////////////////////////////////////////////////////////////////////
+// Below is the core WebGL initialization code.
+///////////////////////////////////////////////////////////////////////////////////
+var boxDrawer;
+var canvas, gl;
+var rotX=0, rotY=0, transY=0, transZ=3;
+var MV, MVP; // view matrices
+
+// Called once to initialize
+function InitWebGL() {
+    // Initialize the WebGL canvas
+    canvas = document.getElementById("canvas");
+    canvas.oncontextmenu = function() { return false; };
+    gl = canvas.getContext("webgl", { antialias: false, depth: true }); // Initialize the GL context
+    if (!gl) {
+        alert("Unable to initialize WebGL. Your browser or machine may not support it.");
+        return;
+    }
+
+    // Initialize settings
+    gl.clearColor(0, 0, 0, 0);
+    gl.enable(gl.DEPTH_TEST);
+
+    // Initialize the BoxDrawer
+    boxDrawer = new BoxDrawer();
+
+    // Set the viewport size
+    UpdateCanvasSize();
+}
+
+
+// Called every time the window size is changed.
+function UpdateCanvasSize()
+{
+	canvas.style.width  = "100%";
+	canvas.style.height = "100%";
+	const pixelRatio = window.devicePixelRatio || 1;
+	canvas.width  = pixelRatio * canvas.clientWidth;
+	canvas.height = pixelRatio * canvas.clientHeight;
+	const width  = (canvas.width  / pixelRatio);
+	const height = (canvas.height / pixelRatio);
+	canvas.style.width  = width  + 'px';
+	canvas.style.height = height + 'px';
+	gl.viewport( 0, 0, canvas.width, canvas.height );
+	UpdateViewMatrices();
+}
+
+function ProjectionMatrix( c, z, fov_angle=60 )
+{
+	var r = c.width / c.height;
+	var n = (z - 1.74);
+	const min_n = 0.001;
+	if ( n < min_n ) n = min_n;
+	var f = (z + 1.74);;
+	var fov = 3.145 * fov_angle / 180;
+	var s = 1 / Math.tan( fov/2 );
+	return [
+		s/r, 0, 0, 0,
+		0, s, 0, 0,
+		0, 0, (n+f)/(f-n), 1,
+		0, 0, -2*n*f/(f-n), 0
+	];
+}
+
+function UpdateViewMatrices()
+{
+	var perspectiveMatrix = ProjectionMatrix( canvas, transZ );
+	MV  = GetModelViewMatrix( 0, transY, transZ, rotX, rotY );
+	MVP = MatrixMult( perspectiveMatrix, MV );
+}
+
+// This is the main function that handled WebGL drawing
+function DrawScene() {
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    for (let i = 0; i < massSprings.length; i++) {
+        let massSpring = massSprings[i];
+        if (massSpring && massSpring.meshDrawer) {
+            let perspectiveMatrix = ProjectionMatrix(canvas, transZ);
+            let MV = GetModelViewMatrix(0, transY, transZ, rotX, rotY);
+            let MVP = MatrixMult(perspectiveMatrix, MV);
+            let nrmTrans = [MV[0], MV[1], MV[2], MV[4], MV[5], MV[6], MV[8], MV[9], MV[10]];
+
+            massSpring.meshDrawer.draw(MVP, MV, nrmTrans);
+        } else {
+            console.warn(`massSpring[${i}] or its meshDrawer is undefined`);
+        }
+    }
+
+    if (showBox.checked) {
+        boxDrawer.draw(MVP);
+    }
+}
+
+function InitMassSprings() {
+	let spring1 = new Pin('pin.obj', new Vec3(-10, 0, 0));
+	let spring2 = new Pin('pin.obj', new Vec3(10, 0, 0));
+	let spring3 = new Pin('pin.obj', new Vec3(0, 50, 0));
+
+	massSprings.push(spring1);
+	massSprings.push(spring2);
+	massSprings.push(spring3);
+}
+
+// This is a helper function for compiling the given vertex and fragment shader source code into a program.
+function InitShaderProgram( vsSource, fsSource, wgl=gl )
+{
+	const vs = CompileShader( wgl.VERTEX_SHADER,   vsSource, wgl );
+	const fs = CompileShader( wgl.FRAGMENT_SHADER, fsSource, wgl );
+
+	const prog = wgl.createProgram();
+	wgl.attachShader(prog, vs);
+	wgl.attachShader(prog, fs);
+	wgl.linkProgram(prog);
+
+	if (!wgl.getProgramParameter(prog, wgl.LINK_STATUS)) {
+		alert('Unable to initialize the shader program: ' + wgl.getProgramInfoLog(prog));
+		return null;
+	}
+	return prog;
+}
+
+// This is a helper function for compiling a shader, called by InitShaderProgram().
+function CompileShader( type, source, wgl=gl )
+{
+	const shader = wgl.createShader(type);
+	wgl.shaderSource(shader, source);
+	wgl.compileShader(shader);
+	if (!wgl.getShaderParameter( shader, wgl.COMPILE_STATUS) ) {
+		alert('An error occurred compiling shader:\n' + wgl.getShaderInfoLog(shader));
+		wgl.deleteShader(shader);
+		return null;
+	}
+	return shader;
+}
+
+// Multiplies two matrices and returns the result A*B.
+// The arguments A and B are arrays, representing column-major matrices.
+function MatrixMult( A, B )
+{
+	var C = Array(16);
+	for ( var i=0, m=0; i<4; ++i ) {
+		for ( var j=0; j<4; ++j, ++m ) {
+			var v = 0;
+			for ( var k=0; k<4; ++k ) {
+				v += A[j+4*k] * B[k+4*i];
+			}
+			C[m] = v;
+		}
+	}
+	return C;
+}
+
+// Returns the inverse of the given 4x4 matrix
+function MatrixInverse( m )
+{
+	var r = Array(16);
+	
+	var v_11_14__10_15 = m[11] * m[14] - m[10] * m[15];
+	var v_10_15__11_14 = m[10] * m[15] - m[11] * m[14];
+	var v__7_14___6_15 = m[ 7] * m[14] - m[ 6] * m[15];
+	var v__6_11___7_10 = m[ 6] * m[11] - m[ 7] * m[10];
+
+	var v__9_15__11_13 = m[ 9] * m[15] - m[11] * m[13];
+	var v_11_13___9_15 = m[11] * m[13] - m[ 9] * m[15];
+	var v__5_15___7_13 = m[ 5] * m[15] - m[ 7] * m[13];
+	var v__7__9___5_11 = m[ 7] * m[ 9] - m[ 5] * m[11];
+	
+	var v_10_13___9_14 = m[10] * m[13] - m[ 9] * m[14];
+	var v__9_14__10_13 = m[ 9] * m[14] - m[10] * m[13];
+	var v__6_13___5_14 = m[ 6] * m[13] - m[ 5] * m[14];
+	var v__5_10___6__9 = m[ 5] * m[10] - m[ 6] * m[ 9];
+	
+	var v_11_12___8_15 = m[11] * m[12] - m[ 8] * m[15];
+	var v__8_15__11_12 = m[ 8] * m[15] - m[11] * m[12];
+	var v__7_12___4_15 = m[ 7] * m[12] - m[ 4] * m[15];
+	var v__4_11___7__8 = m[ 4] * m[11] - m[ 7] * m[ 8];
+	
+	var v__8_14__10_12 = m[ 8] * m[14] - m[10] * m[12];
+	var v_10_12___8_14 = m[10] * m[12] - m[ 8] * m[14];
+	var v__4_14___6_12 = m[ 4] * m[14] - m[ 6] * m[12];
+	var v__6__8___4_10 = m[ 6] * m[ 8] - m[ 4] * m[10];
+	
+	var v__9_12___8_13 = m[ 9] * m[12] - m[ 8] * m[13];
+	var v__8_13___9_12 = m[ 8] * m[13] - m[ 9] * m[12];
+	var v__5_12___4_13 = m[ 5] * m[12] - m[ 4] * m[13];
+	var v__4__9___5__8 = m[ 4] * m[ 9] - m[ 5] * m[ 8];
+
+	r[ 0] = m[5] * (-v_11_14__10_15) + m[6] * (-v__9_15__11_13) + m[7] * (-v_10_13___9_14);
+	r[ 1] = m[1] * (-v_10_15__11_14) + m[2] * (-v_11_13___9_15) + m[3] * (-v__9_14__10_13);
+	r[ 2] = m[1] * (-v__7_14___6_15) + m[2] * (-v__5_15___7_13) + m[3] * (-v__6_13___5_14);
+	r[ 3] = m[1] * (-v__6_11___7_10) + m[2] * (-v__7__9___5_11) + m[3] * (-v__5_10___6__9);
+	
+	r[ 4] = m[4] * ( v_11_14__10_15) + m[6] * (-v_11_12___8_15) + m[7] * (-v__8_14__10_12);
+	r[ 5] = m[0] * ( v_10_15__11_14) + m[2] * (-v__8_15__11_12) + m[3] * (-v_10_12___8_14);
+	r[ 6] = m[0] * ( v__7_14___6_15) + m[2] * (-v__7_12___4_15) + m[3] * (-v__4_14___6_12);
+	r[ 7] = m[0] * ( v__6_11___7_10) + m[2] * (-v__4_11___7__8) + m[3] * (-v__6__8___4_10);
+	
+	r[ 8] = m[4] * ( v__9_15__11_13) + m[5] * ( v_11_12___8_15) + m[7] * (-v__9_12___8_13);
+	r[ 9] = m[0] * ( v_11_13___9_15) + m[1] * ( v__8_15__11_12) + m[3] * (-v__8_13___9_12);
+	r[10] = m[0] * ( v__5_15___7_13) + m[1] * ( v__7_12___4_15) + m[3] * (-v__5_12___4_13);
+	r[11] = m[0] * ( v__7__9___5_11) + m[1] * ( v__4_11___7__8) + m[3] * (-v__4__9___5__8);
+
+	r[12] = m[4] * ( v_10_13___9_14) + m[5] * ( v__8_14__10_12) + m[6] * ( v__9_12___8_13);
+	r[13] = m[0] * ( v__9_14__10_13) + m[1] * ( v_10_12___8_14) + m[2] * ( v__8_13___9_12);
+	r[14] = m[0] * ( v__6_13___5_14) + m[1] * ( v__4_14___6_12) + m[2] * ( v__5_12___4_13);
+	r[15] = m[0] * ( v__5_10___6__9) + m[1] * ( v__6__8___4_10) + m[2] * ( v__4__9___5__8);
+
+	var det = m[0]*r[0] + m[1]*r[4] + m[2]*r[8] + m[3]*r[12];
+	for ( var i=0; i<16; ++i ) r[i] /= det;
+	
+	return r;
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+</script>
+
+<script type="text/javascript">
+///////////////////////////////////////////////////////////////////////////////////
+// Below is the light view control code
+///////////////////////////////////////////////////////////////////////////////////
+
+var lightView;
+
+class LightView
+{
+	constructor()
+	{
+		this.canvas = document.getElementById("lightcontrol");
+		this.canvas.oncontextmenu = function() {return false;};
+		this.gl = this.canvas.getContext("webgl", {antialias: false, depth: true});	// Initialize the GL context
+		if (!this.gl) {
+			alert("Unable to initialize WebGL. Your browser or machine may not support it.");
+			return;
+		}
+		
+		// Initialize settings
+		this.gl.clearColor(0.33,0.33,0.33,0);
+		this.gl.enable(gl.DEPTH_TEST);
+		
+		this.rotX = 0;
+		this.rotY = 0;
+		this.posZ = 5;
+		
+		this.resCircle = 32;
+		this.resArrow = 16;
+		this.buffer = this.gl.createBuffer();
+		var data = [];
+		for ( var i=0; i<=this.resCircle; ++i ) {
+			var a = 2 * Math.PI * i / this.resCircle;
+			var x = Math.cos(a);
+			var y = Math.sin(a);
+			data.push( x * .9 );
+			data.push( y * .9 );
+			data.push( 0 );
+			data.push( x );
+			data.push( y );
+			data.push( 0 );
+		}
+		for ( var i=0; i<=this.resCircle; ++i ) {
+			var a = 2 * Math.PI * i / this.resCircle;
+			var x = Math.cos(a);
+			var y = Math.sin(a);
+			data.push( x );
+			data.push( y );
+			data.push( -.05 );
+			data.push( x );
+			data.push( y );
+			data.push( 0.05 );
+		}
+		for ( var i=0; i<=this.resArrow; ++i ) {
+			var a = 2 * Math.PI * i / this.resArrow;
+			var x = Math.cos(a) * .07;
+			var y = Math.sin(a) * .07;
+			data.push( x );
+			data.push( y );
+			data.push( -1 );
+			data.push( x );
+			data.push( y );
+			data.push( 0 );
+		}
+		data.push( 0 );
+		data.push( 0 );
+		data.push( -1.2 );
+		for ( var i=0; i<=this.resArrow; ++i ) {
+			var a = 2 * Math.PI * i / this.resArrow;
+			var x = Math.cos(a) * .15;
+			var y = Math.sin(a) * .15;
+			data.push( x );
+			data.push( y );
+			data.push( -0.9 );
+		}
+		this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.buffer);
+		this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(data), this.gl.STATIC_DRAW);
+		
+		// Set the viewport size
+		this.canvas.style.width  = "";
+		this.canvas.style.height = "";
+		const pixelRatio = window.devicePixelRatio || 1;
+		this.canvas.width  = pixelRatio * this.canvas.clientWidth;
+		this.canvas.height = pixelRatio * this.canvas.clientHeight;
+		const width  = (this.canvas.width  / pixelRatio);
+		const height = (this.canvas.height / pixelRatio);
+		this.canvas.style.width  = width  + 'px';
+		this.canvas.style.height = height + 'px';
+		this.gl.viewport( 0, 0, this.canvas.width, this.canvas.height );
+		this.proj = ProjectionMatrix( this.canvas, this.posZ, 30 );
+		
+		// Compile the shader program
+		this.prog = InitShaderProgram( lightViewVS, lightViewFS, this.gl );
+		this.mvp = this.gl.getUniformLocation( this.prog, 'mvp' );
+		this.clr1 = this.gl.getUniformLocation( this.prog, 'clr1' );
+		this.clr2 = this.gl.getUniformLocation( this.prog, 'clr2' );
+		this.vertPos = this.gl.getAttribLocation( this.prog, 'pos' );
+		
+		this.draw();
+		this.updateLightDir();
+		
+		this.canvas.onmousedown = function() {
+			var cx = event.clientX;
+			var cy = event.clientY;
+			lightView.canvas.onmousemove = function() {
+				lightView.rotY += (cx - event.clientX)/lightView.canvas.width*5;
+				lightView.rotX += (cy - event.clientY)/lightView.canvas.height*5;
+				cx = event.clientX;
+				cy = event.clientY;
+				lightView.draw();
+				lightView.updateLightDir();
+			}
+		}
+		this.canvas.onmouseup = this.canvas.onmouseleave = function() {
+			lightView.canvas.onmousemove = null;
+		}
+	}
+	
+	updateLightDir()
+	{
+		var cy = Math.cos( this.rotY );
+		var sy = Math.sin( this.rotY );
+		var cx = Math.cos( this.rotX );
+		var sx = Math.sin( this.rotX );
+
+		for (let i = 0; i < massSprings.length; i++) {
+			massSprings[i].meshDrawer.setLightDir( -sy, cy*sx, -cy*cx );
+		}
+
+		DrawScene();
+	}
+	
+	draw()
+	{
+		// Clear the screen and the depth buffer.
+		this.gl.clear( this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT );
+		
+		this.gl.bindBuffer( this.gl.ARRAY_BUFFER, this.buffer );
+		this.gl.vertexAttribPointer( this.vertPos, 3, this.gl.FLOAT, false, 0, 0 );
+		this.gl.enableVertexAttribArray( this.buffer );
+
+		this.gl.useProgram( this.prog );
+		var mvp = MatrixMult( this.proj, [ 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,this.posZ,1 ] );
+		this.gl.uniformMatrix4fv( this.mvp, false, mvp );
+		this.gl.uniform3f( this.clr1, 0.6,0.6,0.6 );
+		this.gl.uniform3f( this.clr2, 0,0,0 );
+		this.gl.drawArrays( this.gl.TRIANGLE_STRIP, 0, this.resCircle*2+2 );
+
+		var mv  = GetModelViewMatrix( 0, 0, this.posZ, this.rotX, this.rotY );
+		var mvp = MatrixMult( this.proj, mv );
+		this.gl.uniformMatrix4fv( this.mvp, false, mvp );
+		this.gl.uniform3f( this.clr1, 1,1,1 );
+		this.gl.drawArrays( this.gl.TRIANGLE_STRIP, 0, this.resCircle*2+2 );
+		this.gl.drawArrays( this.gl.TRIANGLE_STRIP, this.resCircle*2+2, this.resCircle*2+2 );
+		this.gl.uniform3f( this.clr1, 0,0,0 );
+		this.gl.uniform3f( this.clr2, 1,1,1 );
+		this.gl.drawArrays( this.gl.TRIANGLE_STRIP, this.resCircle*4+4, this.resArrow*2+2 );
+		this.gl.drawArrays( this.gl.TRIANGLE_FAN, this.resCircle*4+4 + this.resArrow*2+2, this.resArrow+2 );
+	}
+}
+
+// Vertex shader source code
+const lightViewVS = `
+	attribute vec3 pos;
+	uniform mat4 mvp;
+	void main()
+	{
+		gl_Position = mvp * vec4(pos,1);
+	}
+`;
+// Fragment shader source code
+var lightViewFS = `
+	precision mediump float;
+	uniform vec3 clr1;
+	uniform vec3 clr2;
+	void main()
+	{
+		gl_FragColor = gl_FrontFacing ? vec4(clr1,1) : vec4(clr2,1);
+	}
+`;
+///////////////////////////////////////////////////////////////////////////////////
+</script>
+
+<script type="text/javascript">
+///////////////////////////////////////////////////////////////////////////////////
+// Below is the mass-spring system code
+///////////////////////////////////////////////////////////////////////////////////
+var massSprings = [];
+var boundingBoxes = [];
+
+class Vec3 {
+	constructor( x, y, z ) { this.init(x,y,z); }
+	init( x, y, z ) { this.x=x; this.y=y; this.z=z; }
+	copy ( ) { return new Vec3( this.x, this.y, this.z ); }
+	set  (v) { this.x =v.x; this.y =v.y; this.z =v.z; }
+	inc  (v) { this.x+=v.x; this.y+=v.y; this.z+=v.z; }
+	dec  (v) { this.x-=v.x; this.y-=v.y; this.z-=v.z; }
+	scale(f) { this.x*=f; this.y*=f; this.z*=f; }
+	add  (v) { return new Vec3( this.x+v.x, this.y+v.y, this.z+v.z ); }
+	sub  (v) { return new Vec3( this.x-v.x, this.y-v.y, this.z-v.z ); }
+	dot  (v) { return this.x*v.x + this.y*v.y + this.z*v.z; }
+	cross(v) { return new Vec3( this.y*v.z-this.z*v.y, this.z*v.x-this.x*v.z, this.x*v.y-this.y*v.x ); }
+	mul  (f) { return new Vec3( this.x*f, this.y*f, this.z*f ); }
+	div  (f) { return new Vec3( this.x/f, this.y/f, this.z/f ); }
+	len2 ( ) { return this.dot(this); }
+	len  ( ) { return Math.sqrt(this.len2()); }
+	unit ( ) { return this.div(this.len()); }
+	normalize() {
+		var l = this.len();
+		this.x /= l;
+		this.y /= l;
+		this.z /= l;
+	}
+	trans(m) {
+		return {
+			x: m[0]*this.x + m[4]*this.y + m[ 8]*this.z + m[12],
+			y: m[1]*this.x + m[5]*this.y + m[ 9]*this.z + m[13],
+			z: m[2]*this.x + m[6]*this.y + m[10]*this.z + m[14],
+			w: m[3]*this.x + m[7]*this.y + m[11]*this.z + m[15]
+		};
+	}
+}
+
+function ToVec3(a) { return new Vec3(a[0],a[1],a[2]); }
+
+class MassSpring {
+
+	constructor(objdef, initialPosition = new Vec3(0,0,0))
+	{
+		this.meshDrawer = new MeshDrawer();
+		this.gravity = new Vec3( 0, -2.0, 0 );
+		this.mass = .1;
+		this.stiffness = 1;
+		this.damping = 1;
+		this.restitution = .8;
+		this.initialPosition = initialPosition;
+		this.setMesh( document.getElementById(objdef).text );
+	}
+	setMesh( objdef )
+	{
+		this.mesh = new ObjMesh;
+		this.mesh.parse( objdef );
+		var box = this.mesh.getBoundingBox();
+		// console.log(this.initialPosition);
+		var shift = [
+			this.initialPosition.x,
+			this.initialPosition.y,
+			this.initialPosition.z
+		];
+		var size = [
+			(box.max[0]-box.min[0])/2,
+			(box.max[1]-box.min[1])/2,
+			(box.max[2]-box.min[2])/2
+		];
+		var maxSize = Math.max( size[0], size[1], size[2] );
+		var scale = 0.4/maxSize;
+		this.mesh.shiftAndScale( shift, scale );
+		this.mesh.computeNormals();
+		this.reset();
+		this.initSprings();
+		DrawScene();
+	}
+	initSprings()
+	{
+		this.springs = [];
+		for ( var i=0; i<this.pos.length; ++i ) {
+			for ( var j=i+1; j<this.pos.length; ++j ) {
+				var r = this.pos[i].sub(this.pos[j]).len();
+				if ( r > .02 ) 
+				{
+					this.springs.push( { p0:i, p1:j, rest:r } );
+				}
+			}
+		}
+	}
+	reset()
+	{
+		this.pos = Array( this.mesh.vpos.length );
+		for ( var i=0; i<this.pos.length; ++i ) this.pos[i] = ToVec3( this.mesh.vpos[i] );
+		this.vel = Array( this.pos.length );
+		for ( var i=0; i<this.vel.length; ++i ) this.vel[i] = new Vec3(0,0,0);
+		this.nrm = Array( this.mesh.norm.length );
+		for ( var i=0; i<this.nrm.length; ++i ) this.nrm[i] = ToVec3( this.mesh.norm[i] );
+		this.buffers = this.mesh.getVertexBuffers();
+		this.meshDrawer.setMesh( this.buffers.positionBuffer, this.buffers.texCoordBuffer, this.buffers.normalBuffer );
+	}
+	currentBoundingBox()
+	{
+    	let min = new Vec3(Infinity,Infinity,Infinity);
+    	let max = new Vec3(-Infinity,-Infinity,-Infinity);
+		for (let i = 0; i < this.pos.length; i++) {
+			min.x = Math.min(min.x, this.pos[i].x);
+			min.y = Math.min(min.y, this.pos[i].y);
+			min.z = Math.min(min.z, this.pos[i].z);
+			max.x = Math.max(max.x, this.pos[i].x);
+			max.y = Math.max(max.y, this.pos[i].y);
+			max.z = Math.max(max.z, this.pos[i].z);
+		}
+		return { min: min, max: max };
+	}
+	updateMesh()
+	{
+		function updateBuffer( buffer, faces, verts )
+		{
+			function addTriangleToBuffer( buffer, bi, vals, i, j, k )
+			{
+				buffer[bi++] = vals[i].x;
+				buffer[bi++] = vals[i].y;
+				buffer[bi++] = vals[i].z;
+				buffer[bi++] = vals[j].x;
+				buffer[bi++] = vals[j].y;
+				buffer[bi++] = vals[j].z;
+				buffer[bi++] = vals[k].x;
+				buffer[bi++] = vals[k].y;
+				buffer[bi++] = vals[k].z;
+			}
+			for ( var i=0, bi=0; i<faces.length; ++i ) {
+				var f = faces[i];
+				if ( f.length < 3 ) continue;
+				addTriangleToBuffer( buffer, bi, verts, f[0], f[1], f[2] );
+				bi += 9;
+				for ( var j=3; j<f.length; ++j, bi+=9 ) {
+					addTriangleToBuffer( buffer, bi, verts, f[0], f[j-1], f[j] );
+				}
+			}
+		}
+		
+		// update the position buffer
+		updateBuffer( this.buffers.positionBuffer, this.mesh.face, this.pos );
+		
+		// update normals
+		for ( var i=0; i<this.nrm.length; ++i ) this.nrm[i].init(0,0,0);
+		for ( var i=0; i<this.mesh.face.length; ++i ) {
+			var f = this.mesh.face[i];
+			var nf = this.mesh.nfac[i];
+			var v0 = this.pos[ f[0] ];
+			for ( var j=1; j<f.length-1; ++j ) {
+				var v1 = this.pos[ f[j] ];
+				var v2 = this.pos[ f[j+1] ];
+				var e0 = v1.sub(v0);
+				var e1 = v2.sub(v0);
+				var n  = e0.cross(e1);
+				n = n.unit();
+				this.nrm[ nf[0  ] ].inc(n);
+				this.nrm[ nf[j  ] ].inc(n);
+				this.nrm[ nf[j+1] ].inc(n);
+			}
+		}
+		for ( var i=0; i<this.nrm.length; ++i ) this.nrm[i].normalize();
+		updateBuffer( this.buffers.normalBuffer, this.mesh.nfac, this.nrm );
+
+		// Update the mesh drawer and redraw scene
+		this.meshDrawer.setMesh( this.buffers.positionBuffer, this.buffers.texCoordBuffer, this.buffers.normalBuffer );
+
+		DrawScene();
+	}
+
+	simTimeStep() {
+    let flagCollision = false;
+    let boundingBoxes = [];
+
+    // Ricorda la posizione del vertice selezionato, se presente
+    var p = this.holdVert ? this.holdVert.copy() : undefined;
+
+    // Aggiorna posizioni e velocità
+    var timestep = document.getElementById('timestep').value;
+    const dt = timestep / 1000;  // time step in seconds
+    const damping = this.damping * this.stiffness * dt;
+
+    let cBoundingBox = this.currentBoundingBox();
+    for (let i = 0; i < massSprings.length; i++) {
+        if (massSprings[i] !== this) {
+            let otherBoundingBox = massSprings[i].currentBoundingBox();
+            if (detectAABBCollision(cBoundingBox, otherBoundingBox)) {
+                flagCollision = true;
+                boundingBoxes.push(otherBoundingBox);  // Aggiungi la bounding box rilevata
+            }
+        }
+    }
+
+    SimTimeStep(dt, this.pos, this.vel, this.springs, this.stiffness, damping, this.mass, this.gravity, this.restitution, flagCollision, boundingBoxes);
+
+    // Assicurati che il vertice selezionato non cambi posizione
+    if (p) {
+        this.holdVert.set(p);
+        this.vel[this.selVert].init(0, 0, 0);
+    }
+
+    // Aggiorna la mesh
+    this.updateMesh();
+}
+
+	startSimulation() {
+		var timestep = document.getElementById('timestep').value;
+		if (!this.isSimulationRunning()) {
+			this.timer = setInterval(function() {
+				for (let i = 0; i < massSprings.length; i++) {
+					massSprings[i].simTimeStep();
+				}
+			}, timestep);
+		}
+	}
+
+	stopSimulation()
+	{
+		clearInterval( this.timer );
+		this.timer = undefined;
+	}
+	isSimulationRunning() { return this.timer !== undefined; }
+	restartSimulation() { if ( this.isSimulationRunning() ) { this.stopSimulation(); this.startSimulation(); } }
+	toggleSimulation( btn )
+	{
+		if ( this.isSimulationRunning() ) {
+			this.stopSimulation();
+			btn.value = "Start Simulation";
+		} else {
+			this.startSimulation();
+			btn.value = "Stop Simulation";
+		}
+	}
+	
+	mouseMove()
+	{
+		var m = MousePos();
+		this.selVert = undefined;
+		var selPt;
+		var minDist = 10;
+		for ( var i=0; i<this.pos.length; ++i ) {
+			var p = this.pos[i];
+			var pv = p.trans(MVP);
+			var px = pv.x / pv.w;
+			var py = pv.y / pv.w;
+			var dx = m.x - px;
+			var dy = m.y - py;
+			var len2 = dx*dx + dy*dy;
+			if ( len2 < 0.001 && len2 < minDist ) {
+				minDist = len2;
+				this.selVert = i;
+				selPt = p;
+			}
+		}
+	}
+	
+	mouseDown()
+	{
+		if ( this.selVert === undefined ) return false;
+		var mInv = MatrixInverse(MVP);
+		var p = this.pos[ this.selVert ];
+		var pv = p.trans(MVP);
+		this.holdVert = this.pos[ this.selVert ];
+		
+		function mouse4D()
+		{
+			var m = MousePos();
+			return {
+				x: m.x * pv.w,
+				y: m.y * pv.w,
+				z: pv.z,
+				w: pv.w
+			};
+		}
+		
+		function invTrans(v)
+		{
+			return {
+				x: mInv[0]*v.x + mInv[4]*v.y + mInv[ 8]*v.z + mInv[12]*v.w,
+				y: mInv[1]*v.x + mInv[5]*v.y + mInv[ 9]*v.z + mInv[13]*v.w,
+				z: mInv[2]*v.x + mInv[6]*v.y + mInv[10]*v.z + mInv[14]*v.w,
+				w: mInv[3]*v.x + mInv[7]*v.y + mInv[11]*v.z + mInv[15]*v.w
+			};
+		}
+		
+		function mouse3D() { 
+			var m = invTrans(mouse4D());
+			return new Vec3( m.x/m.w, m.y/m.w, m.z/m.w );
+		}
+		
+		var m0 = mouse3D();
+		var ms = this;
+		
+		canvas.onmousemove = function() {
+			var m1 = mouse3D();
+			var d = m1.sub(m0);
+			m0 = { ...m1 };
+			p.inc(d);
+			ms.updateMesh();
+		}
+		return true;		
+	}
+	
+	mouseUp()
+	{
+		this.holdVert = undefined;
+	}
+}
+
+class Pin extends MassSpring {
+    constructor(objdef, initialPosition) {
+        super(objdef, initialPosition);
+        this.mass = 0.2;
+        this.stiffness = 1;
+        this.damping = 1;
+        this.restitution = 0.8;
+    }
+}
+
+class Ball extends MassSpring {
+    constructor(objdef, initialPosition) {
+        super(objdef, initialPosition);
+        this.mass = 0.2; // Valore diverso per differenziare
+        this.stiffness = 1;
+        this.damping = 1;
+        this.restitution = 0.8;
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+</script>
+
+<script type="text/javascript">
+///////////////////////////////////////////////////////////////////////////////////
+// Below is the mass-spring system code
+///////////////////////////////////////////////////////////////////////////////////
+function detectAABBCollision(boxA, boxB) {
+    return (boxA.min.x <= boxB.max.x && boxA.max.x >= boxB.min.x) &&
+           (boxA.min.y <= boxB.max.y && boxA.max.y >= boxB.min.y) &&
+           (boxA.min.z <= boxB.max.z && boxA.max.z >= boxB.min.z);
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+</script>
+
+<script type="text/javascript">
+///////////////////////////////////////////////////////////////////////////////////
+// Below are the main UI control functions.
+///////////////////////////////////////////////////////////////////////////////////
+
+window.onload = function() {
+	showBox = document.getElementById('show-box');
+	InitWebGL();
+	InitMassSprings();
+	lightView = new LightView();
+	canvas.zoom = function( s ) {
+		transZ *= s/canvas.height + 1;
+		UpdateViewMatrices();
+		DrawScene();
+	}
+	canvas.onwheel = function() { canvas.zoom(0.3*event.deltaY); }
+	canvas.onmousedown = function() {
+		let handled = false;
+
+		// Loop through all massSprings and check if any of them handle the mouse down event
+		for (let i = 0; i < massSprings.length; i++) {
+			if (massSprings[i].mouseDown()) {
+				handled = true;
+				break; // Stop looping if one of the objects handles the event
+			}
+		}
+
+		if (handled) {
+			canvas.ondblclick = null;
+			return;
+		}
+
+		// If no object handled the mouse down event, proceed with the view controls
+		canvas.ondblclick = canvas.resetView;
+		var cx = event.clientX;
+		var cy = event.clientY;
+		if (event.ctrlKey) {
+			canvas.onmousemove = function() {
+				canvas.zoom(5 * (event.clientY - cy));
+				cy = event.clientY;
+			}
+		} else if (event.altKey) {
+			canvas.onmousemove = function() {
+				let s = 1.5 * transZ * (event.clientY - cy);
+				transY -= s / canvas.height;
+				UpdateViewMatrices();
+				DrawScene();
+				cy = event.clientY;
+			}
+		} else {
+			canvas.onmousemove = function() {
+				rotY += (cx - event.clientX) / canvas.width * 5;
+				rotX += (cy - event.clientY) / canvas.height * 5;
+				cx = event.clientX;
+				cy = event.clientY;
+				UpdateViewMatrices();
+				DrawScene();
+			}
+		}
+	}
+	canvas.onmouseup = canvas.onmouseleave = function() {
+		// Loop through all massSprings and call mouseUp on each
+		for (let i = 0; i < massSprings.length; i++) {
+			massSprings[i].mouseUp();
+    	}
+    
+		// Set the mouseMove event to call mouseMove on each object in the array
+		canvas.onmousemove = function() {
+			for (let i = 0; i < massSprings.length; i++) {
+				massSprings[i].mouseMove();
+			}
+		}
+	}
+
+	canvas.onmousemove = function() {
+		// Loop through all massSprings and call mouseMove on each
+		for (let i = 0; i < massSprings.length; i++) {
+			massSprings[i].mouseMove();
+		}
+	}
+
+	canvas.resetView = function() {
+		rotX = 0;
+		rotY = 0;
+		transY = 0;
+		transZ = 3;
+		UpdateViewMatrices();
+		DrawScene();
+	}
+
+	SetGravity  ( document.getElementById('gravity') );
+	SetMass     ( document.getElementById('mass') );
+	SetStiffness( document.getElementById('stiffness') );
+	SetDamping  ( document.getElementById('damping') );
+	SetShininess( document.getElementById('shininess-exp') );
+
+	DrawScene();
+};
+
+function WindowResize()
+{
+	UpdateCanvasSize();
+	DrawScene();
+}
+
+function MousePos()
+{
+	return {
+		x:  ( event.clientX / canvas.clientWidth  ) * 2 - 1,
+		y: -( event.clientY / canvas.clientHeight ) * 2 + 1
+	};
+}
+
+function ShowTexture( param )
+{
+	for (let i = 0; i < massSprings.length; i++) {
+		massSprings[i].meshDrawer.showTexture( param.checked );
+	}
+	DrawScene();
+}
+
+function SetTimeStepSize(param) 
+{
+    var s = param.value;
+    document.getElementById('timestep-value').innerText = s + " ms";
+}
+
+function SetGravity(param) {
+    var v = param.value;
+    var s = v / 20;
+    document.getElementById('gravity-value').innerText = s.toFixed(2);
+    for (let i = 0; i < massSprings.length; i++) {
+        massSprings[i].gravity.y = (-s);
+    }
+}
+
+function SetMass(param) {
+    var v = param.value;
+    var s = v / 200;
+    document.getElementById('mass-value').innerText = s.toFixed(3);
+
+    // Loop through all massSprings and set the mass for each
+    for (let i = 0; i < massSprings.length; i++) {
+        massSprings[i].mass = s;
+    }
+}
+
+function SetStiffness(param) {
+    var v = param.value;
+    var s = v / 20;
+    document.getElementById('stiffness-value').innerText = s.toFixed(2);
+
+    // Loop through all massSprings and set the stiffness for each
+    for (let i = 0; i < massSprings.length; i++) {
+        massSprings[i].stiffness = s;
+    }
+}
+
+function SetDamping(param) {
+    var v = param.value;
+    var s = v / 20;
+    document.getElementById('damping-value').innerText = s.toFixed(2);
+
+    // Loop through all massSprings and set the damping for each
+    for (let i = 0; i < massSprings.length; i++) {
+        massSprings[i].damping = s;
+    }
+}
+
+function SetShininess(param) {
+    var exp = param.value;
+    var s = Math.pow(10, exp / 25);
+    document.getElementById('shininess-value').innerText = s.toFixed(s < 10 ? 2 : 0);
+	
+	for (let i = 0; i < massSprings.length; i++) {
+		massSprings[i].meshDrawer.setShininess(s);
+	}
+    
+    DrawScene();
+}
+
+function toggleSimulation(button) {
+    for (let i = 0; i < massSprings.length; i++) {
+        if (massSprings[i].isSimulationRunning()) {
+            massSprings[i].stopSimulation();
+        } else {
+            massSprings[i].startSimulation();
+        }
+    }
+    button.value = massSprings[0].isSimulationRunning() ? "Stop Simulation" : "Start Simulation";
+}
+
+function resetAll() {
+    for (let i = 0; i < massSprings.length; i++) {
+        massSprings[i].reset();
+    }
+}
+
+function restartAllSimulations() {
+    for (let i = 0; i < massSprings.length; i++) {
+        massSprings[i].restartSimulation();
+    }
+}
+
+
+
+///////////////////////////////////////////////////////////////////////////////////
+</script>
+
+<script id="pin.obj" type="text/obj">
+	# Blender 4.2.0
+# www.blender.org
+mtllib pin0.3.mtl
+o Cube
+v 3.000000 0.010000 -3.000000
+v 3.000000 -0.010000 -3.000000
+v 3.000000 0.010000 3.000000
+v 3.000000 -0.010000 3.000000
+v -3.000000 0.010000 -3.000000
+v -3.000000 -0.010000 -3.000000
+v -3.000000 0.010000 3.000000
+v -3.000000 -0.010000 3.000000
+vn -0.0000 1.0000 -0.0000
+vn -0.0000 -0.0000 1.0000
+vn -1.0000 -0.0000 -0.0000
+vn -0.0000 -1.0000 -0.0000
+vn 1.0000 -0.0000 -0.0000
+vn -0.0000 -0.0000 -1.0000
+vt 0.625000 0.500000
+vt 0.875000 0.500000
+vt 0.875000 0.750000
+vt 0.625000 0.750000
+vt 0.375000 0.750000
+vt 0.625000 1.000000
+vt 0.375000 1.000000
+vt 0.375000 0.000000
+vt 0.625000 0.000000
+vt 0.625000 0.250000
+vt 0.375000 0.250000
+vt 0.125000 0.500000
+vt 0.375000 0.500000
+vt 0.125000 0.750000
+s 0
+usemtl Material
+f 1/1/1 5/2/1 7/3/1 3/4/1
+f 4/5/2 3/4/2 7/6/2 8/7/2
+f 8/8/3 7/9/3 5/10/3 6/11/3
+f 6/12/4 2/13/4 4/5/4 8/14/4
+f 2/13/5 1/1/5 3/4/5 4/5/5
+f 6/11/6 5/10/6 1/1/6 2/13/6
+o 10492_Bowling_Pin_v1_max2011_iteration-2
+v 4.734321 4.069982 0.619625
+v 2.986224 0.626156 -1.518278
+v 2.123383 0.086350 -2.044901
+v 0.720272 0.083858 -2.805158
+v -0.640570 1.133551 -3.521868
+v -0.983627 0.017031 -2.680805
+v -2.360841 2.570647 -3.501313
+v -2.497163 0.075363 -1.605630
+v -4.734321 4.069982 -0.619625
+v -3.060365 0.224078 0.392315
+v -2.390419 3.297559 3.828224
+v -2.234734 0.012054 1.846343
+v -1.123799 0.018904 2.715541
+v 0.933695 0.217918 2.949250
+v 2.420352 0.083752 1.734465
+v 0.676525 28.036922 -2.253114
+v -1.497664 26.468174 -1.801248
+v -2.317225 28.139399 -0.545159
+v -2.318467 26.271252 0.106342
+v -1.649388 28.640623 1.838366
+v -1.880150 25.876156 1.433330
+v -0.807543 25.983742 2.213432
+v 1.497637 26.468191 1.801270
+v 2.965380 21.918701 -1.539585
+v 4.581064 16.536570 -3.023003
+v -4.026773 17.237356 3.408260
+v 4.361644 17.248379 2.902170
+v 5.310682 16.501989 -1.365317
+v 6.124646 12.893128 0.447113
+v 3.221831 13.862574 -5.063013
+v 1.189874 16.278030 -5.447263
+v 0.617785 12.084023 -6.127764
+v 0.035912 15.017332 -5.836615
+v -2.166312 14.357398 -5.508585
+v -4.283394 14.637524 -4.103130
+v -4.697594 11.177331 -3.882425
+v -5.208370 16.566769 -1.626516
+v -5.860492 12.634698 -1.639821
+v -5.675279 15.951405 0.078664
+v -5.322676 16.529436 1.288098
+v -5.188534 14.272135 2.878318
+v -3.640159 13.547980 4.842189
+v -1.512019 16.730394 5.238699
+v -1.168909 11.857643 5.998841
+v 0.291266 14.045301 5.974368
+v 2.805479 12.918607 5.406337
+v 2.719953 16.390041 4.824027
+v 4.366999 10.684219 4.235062
+v 5.547845 14.318494 2.120714
+v 4.723865 14.259494 3.592731
+v 5.539025 8.795030 2.262837
+v 5.677665 7.524066 -0.647014
+v 4.686164 4.019220 -1.008685
+v 4.593641 7.358349 -3.316349
+v 3.401765 3.762820 -3.237181
+v 3.328897 8.441052 -4.888751
+v -1.046853 6.360986 -5.394810
+v -3.048067 8.772139 -5.074416
+v -3.832010 6.436772 -3.956417
+v -5.433331 8.211679 -2.140618
+v -3.946016 2.847838 -1.880295
+v -4.686164 4.019220 1.008685
+v -5.397123 7.540759 1.993448
+v -3.634756 3.229678 2.660720
+v -0.709795 6.527408 5.470236
+v 1.546055 4.100757 4.570871
+v 4.643802 7.442816 3.294861
+v 3.312148 6.458359 4.352314
+v 2.722974 17.849699 -4.203128
+v -0.966665 17.537621 -5.021319
+v -2.736278 17.471581 -4.338555
+v -4.116535 17.585247 -3.006405
+v 0.961766 17.512236 5.032349
+v 5.033803 17.716351 0.594642
+v 2.278806 24.678154 -1.088098
+v 2.973837 22.838058 -0.123309
+v 1.662476 25.499067 -1.791902
+v 1.661958 22.553137 -2.615072
+v 0.104540 22.545626 -3.103743
+v -0.933880 23.131863 -2.734337
+v -2.190979 23.019173 -1.953322
+v -2.222852 25.030842 -1.090772
+v -2.934126 22.989609 -0.406469
+v -2.577421 23.130432 1.309614
+v -1.661958 22.553137 2.615072
+v -0.168835 22.475260 3.120807
+v 0.967456 23.067764 2.738796
+v 1.895977 23.070164 2.187515
+v 2.895330 22.469500 1.187578
+v 2.300893 28.276630 -0.702202
+v 3.543210 32.874519 -0.422500
+v 3.431773 32.535389 0.535635
+v 1.742960 28.096359 -1.612747
+v 2.689083 32.637463 -2.246400
+v -2.945896 32.681385 -1.908867
+v -3.337802 32.250282 -0.596837
+v -3.400696 32.656738 0.841422
+v -2.705227 32.319244 2.115293
+v -1.388970 32.197079 3.111893
+v -0.747938 28.661732 2.354509
+v 0.460154 32.528011 3.470918
+v 1.957020 33.075413 2.955839
+v 3.344234 35.394405 -0.075462
+v 2.774516 35.243610 -1.789439
+v 2.077023 36.834206 -1.593005
+v 2.134996 34.039299 -2.765416
+v -0.402054 35.119274 -3.332046
+v -1.958555 35.093544 -2.775802
+v -2.797736 35.998623 -1.246933
+v -3.380895 34.627186 -0.696706
+v -3.495201 34.988350 -0.009808
+v -2.737388 35.334888 1.934410
+v -1.565369 33.967056 3.162835
+v -1.278312 35.689777 2.935287
+v 0.394398 35.283550 3.344784
+v 2.832049 35.161526 1.852933
+v 1.997562 36.015816 2.346411
+v 1.307793 36.015324 -2.752551
+v 0.788059 37.508755 -1.497906
+v 0.208985 36.837185 -2.584222
+v -0.949347 37.132816 -2.171204
+v -2.267446 37.082253 -0.817844
+v -2.406874 36.874100 1.042503
+v -1.131902 36.946922 2.319329
+v 0.633199 36.974895 2.402095
+v 1.726121 37.154488 1.582513
+v 5.739826 11.606653 -2.278660
+v 4.842937 12.112451 -3.728960
+v 1.135820 7.981616 -5.702966
+v -2.271402 11.066168 -5.682812
+v -5.809195 8.550128 -1.039563
+v -5.973272 11.496891 1.483520
+v -4.274017 9.511614 4.235350
+v -2.518906 7.844336 5.246891
+v 1.587050 9.431865 5.824557
+v 1.722336 2.338090 -3.751817
+v 0.419715 3.099997 -4.417491
+v -0.419715 3.099997 4.417491
+v 3.471930 2.807922 2.645811
+v -0.334406 28.260267 -2.360932
+v -1.552592 28.628693 -1.959103
+v -2.340426 28.600719 0.824345
+v 0.196481 28.247814 2.384413
+v 1.496188 28.655952 1.998433
+v 2.286324 28.006882 0.636799
+v 2.351512 25.758112 0.569809
+v 0.057789 25.226686 -2.461123
+v -0.057830 25.226690 2.461120
+v 2.903641 0.027314 0.551823
+v 2.662858 36.871799 -0.031510
+v -1.177168 37.684456 0.482171
+v 0.077828 37.821568 0.829710
+v 1.250801 37.689163 -0.022110
+v -0.630220 37.769718 -0.798918
+v 1.047515 32.103279 -3.214934
+v 0.857534 34.508827 -3.356977
+v -0.445910 32.581013 -3.455061
+v -1.989686 32.625439 -2.860906
+v 3.042738 32.877384 1.825150
+vn 0.5786 -0.8115 0.0819
+vn 0.9159 -0.3318 -0.2260
+vn 0.9306 -0.3268 0.1651
+vn 0.3933 -0.4012 -0.8273
+vn 0.6873 -0.3277 -0.6483
+vn 0.3942 -0.8204 -0.4142
+vn 0.7611 -0.5513 -0.3417
+vn -0.5086 -0.7999 -0.3185
+vn -0.6881 -0.7222 0.0706
+vn -0.8298 -0.3858 -0.4032
+vn -0.9240 -0.3257 0.2003
+vn -0.9415 -0.3126 -0.1259
+vn -0.7544 -0.3577 0.5504
+vn -0.2021 -0.8140 0.5445
+vn -0.4892 -0.3466 0.8003
+vn -0.4481 -0.8226 0.3500
+vn -0.0945 -0.3722 0.9233
+vn 0.2078 -0.7337 0.6469
+vn 0.7319 -0.3826 0.5638
+vn 0.3156 -0.3277 0.8905
+vn 0.4684 -0.7960 0.3834
+vn 0.6235 0.0975 -0.7757
+vn 0.7155 -0.1021 -0.6911
+vn 0.9516 -0.1243 -0.2810
+vn -0.6156 0.0570 -0.7860
+vn -0.1562 -0.1302 -0.9791
+vn 0.0391 0.1536 -0.9874
+vn -0.6206 -0.1893 -0.7610
+vn -0.9372 -0.1616 0.3092
+vn -0.9593 -0.1166 -0.2573
+vn -0.9949 0.0387 0.0927
+vn -0.7953 0.1008 0.5978
+vn -0.6579 -0.1654 0.7348
+vn 0.6354 0.0482 0.7707
+vn 0.1257 -0.1279 0.9838
+vn 0.0054 0.1673 0.9859
+vn 0.5931 -0.1910 0.7821
+vn 0.7923 0.2603 -0.5518
+vn 0.8191 0.3526 -0.4525
+vn 0.9419 0.2540 -0.2198
+vn 0.5252 0.3362 -0.7817
+vn 0.2269 0.2661 -0.9369
+vn 0.5093 0.3162 -0.8004
+vn -0.3458 0.2780 -0.8962
+vn 0.0759 0.3283 -0.9415
+vn -0.1792 0.3231 -0.9292
+vn -0.5037 0.3144 -0.8046
+vn -0.7250 0.2861 -0.6266
+vn -0.7623 0.3286 -0.5576
+vn -0.9117 0.2669 -0.3124
+vn -0.9472 0.2940 -0.1279
+vn -0.9762 0.2170 0.0054
+vn -0.7130 0.3084 0.6297
+vn -0.8679 0.2735 0.4148
+vn -0.9219 0.2809 0.2669
+vn 0.1546 0.3170 0.9358
+vn 0.4800 0.2551 0.8394
+vn 0.3280 0.2806 0.9020
+vn 0.6448 0.2801 0.7112
+vn 0.7903 0.3122 0.5272
+vn 0.9379 -0.0057 -0.3470
+vn 0.7706 0.0302 -0.6367
+vn -0.3653 0.1363 -0.9209
+vn -0.0256 0.1707 -0.9850
+vn 0.1088 0.0082 -0.9940
+vn -0.7219 0.1514 -0.6752
+vn -0.9628 0.0518 -0.2654
+vn -0.7685 -0.0177 -0.6396
+vn -0.9703 -0.0088 0.2419
+vn -0.8664 0.1266 0.4830
+vn -0.5892 0.0955 0.8023
+vn 0.7733 0.1259 0.6214
+vn 0.9264 0.1440 0.3478
+vn 0.9768 -0.1806 -0.1151
+vn 0.8150 -0.1962 -0.5453
+vn 0.5496 -0.1383 -0.8239
+vn -0.9833 -0.1385 -0.1177
+vn -0.9208 -0.1887 0.3412
+vn -0.4437 -0.1755 0.8788
+vn -0.7206 -0.0938 0.6869
+vn 0.9392 0.3204 0.1233
+vn 0.9964 0.0600 0.0600
+vn 0.5317 0.1121 -0.8395
+vn -0.2806 0.2790 0.9184
+vn 0.0574 0.1315 0.9897
+vn 0.9056 0.1748 -0.3865
+vn -0.9001 0.1686 -0.4018
+vn -0.5026 0.3141 0.8054
+vn -0.4153 0.0879 0.9054
+vn -0.0611 0.3203 0.9453
+vn 0.9886 -0.0585 -0.1388
+vn 0.9814 -0.0306 0.1895
+vn 0.7683 -0.1182 -0.6290
+vn -0.1360 -0.1064 -0.9850
+vn 0.3239 -0.1659 -0.9314
+vn -0.5420 -0.1025 -0.8341
+vn -0.8430 -0.0811 -0.5318
+vn -0.7726 -0.1280 0.6219
+vn -0.3017 -0.1740 0.9374
+vn 0.1126 -0.1155 0.9869
+vn -0.3901 -0.1592 0.9069
+vn 0.8629 -0.0690 0.5007
+vn 0.5418 -0.0452 0.8393
+vn 0.9538 -0.1160 0.2771
+vn 0.8150 0.2528 -0.5214
+vn 0.6046 0.0792 -0.7926
+vn 0.3947 0.4065 -0.8240
+vn 0.2464 0.1345 -0.9598
+vn 0.0784 0.6226 -0.7786
+vn -0.7033 0.6502 0.2875
+vn -0.9740 0.2244 0.0297
+vn -0.7888 0.2538 0.5597
+vn -0.4350 0.0540 0.8988
+vn -0.3681 0.3296 0.8694
+vn 0.1235 0.2543 0.9592
+vn 0.8251 0.2374 0.5126
+vn 0.5805 0.3933 0.7130
+vn 0.9642 0.2642 -0.0222
+vn 0.6086 0.6372 -0.4729
+vn -0.1273 0.2478 -0.9604
+vn -0.3117 0.7099 -0.6316
+vn -0.5769 0.2447 -0.7793
+vn -0.6563 0.7114 -0.2513
+vn -0.8047 0.4098 -0.4296
+vn -0.3104 0.6826 0.6616
+vn 0.1555 0.6895 0.7074
+vn 0.5073 0.7466 0.4303
+vn 0.7654 0.6435 -0.0025
+vn -0.2007 -0.2394 -0.9500
+vn -0.3643 -0.0206 -0.9310
+vn -0.5149 -0.1330 -0.8468
+vn -0.8983 -0.1636 -0.4077
+vn -0.1002 -0.2310 0.9678
+vn 0.2624 -0.1053 0.9592
+vn -0.2040 0.0007 0.9790
+vn 0.4592 0.0664 0.8858
+vn 0.7120 -0.0426 0.7009
+vn 0.9303 -0.1241 0.3452
+vn 0.0854 -0.3488 -0.9333
+vn 0.1886 -0.1650 -0.9681
+vn -0.5155 -0.3825 -0.7668
+vn -0.6727 -0.2435 -0.6987
+vn -0.1533 -0.4723 -0.8680
+vn 0.5724 -0.2268 0.7880
+vn 0.7944 -0.2112 0.5695
+vn 0.3105 -0.0963 -0.9457
+vn -0.9653 -0.0974 0.2424
+vn 0.9639 0.1065 0.2440
+vn -0.2017 -0.8427 -0.4991
+vn 0.1530 -0.8153 -0.5584
+vn 0.3233 0.9460 -0.0218
+vn 0.2210 0.8895 -0.4000
+vn -0.1511 0.9675 -0.2027
+vn -0.3218 0.9363 0.1404
+vn 0.0233 0.9729 0.2302
+vn -0.9735 -0.1568 -0.1665
+vn -0.9368 0.1057 -0.3336
+vn 0.9554 0.2910 -0.0495
+vn 0.8690 0.3298 0.3688
+vt 0.142649 0.035655
+vt 0.188020 0.130717
+vt 0.145050 0.135169
+vt 0.307333 0.073234
+vt 0.267540 0.118897
+vt 0.266470 0.018798
+vt 0.207128 0.039297
+vt 0.494495 0.011336
+vt 0.581486 0.021332
+vt 0.508000 0.084163
+vt 0.592849 0.119986
+vt 0.548764 0.118391
+vt 0.649021 0.104493
+vt 0.716901 0.029572
+vt 0.696457 0.111481
+vt 0.670892 0.021940
+vt 0.750066 0.104195
+vt 0.075843 0.024368
+vt 0.087547 0.111843
+vt 0.042730 0.108554
+vt 0.102011 0.039805
+vt 0.336552 0.669356
+vt 0.337764 0.739712
+vt 0.297393 0.745204
+vt 0.450352 0.686832
+vt 0.406925 0.739627
+vt 0.390529 0.663106
+vt 0.446933 0.747580
+vt 0.536625 0.752529
+vt 0.499315 0.737150
+vt 0.527688 0.686176
+vt 0.568971 0.685404
+vt 0.577550 0.756414
+vt 0.658448 0.705649
+vt 0.637056 0.745769
+vt 0.636181 0.674046
+vt 0.657382 0.754880
+vt 0.257808 0.438617
+vt 0.281198 0.574536
+vt 0.216630 0.441861
+vt 0.311526 0.457922
+vt 0.346306 0.427299
+vt 0.335518 0.588706
+vt 0.423986 0.602828
+vt 0.376073 0.582680
+vt 0.399150 0.452105
+vt 0.440363 0.451443
+vt 0.461367 0.600537
+vt 0.482110 0.452899
+vt 0.520308 0.431002
+vt 0.523153 0.591460
+vt 0.557079 0.415618
+vt 0.634744 0.454008
+vt 0.573528 0.604009
+vt 0.586996 0.432619
+vt 0.761339 0.489859
+vt 0.807649 0.472271
+vt 0.692812 0.630511
+vt 0.186708 0.633079
+vt 0.168367 0.634561
+vt 0.065805 0.475762
+vt 0.124796 0.481825
+vt 0.214465 0.319193
+vt 0.255333 0.326590
+vt 0.418025 0.370479
+vt 0.371859 0.384668
+vt 0.356510 0.316762
+vt 0.469736 0.376262
+vt 0.531304 0.333854
+vt 0.480581 0.293946
+vt 0.599058 0.305491
+vt 0.625532 0.379185
+vt 0.682219 0.368800
+vt 0.083922 0.405709
+vt 0.129052 0.402387
+vt 0.176911 0.225904
+vt 0.243396 0.212608
+vt 0.291764 0.233742
+vt 0.554838 0.236472
+vt 0.616413 0.215855
+vt 0.714892 0.230124
+vt 0.669229 0.267160
+vt 0.182665 0.474767
+vt 0.165016 0.357070
+vt 0.300286 0.365639
+vt 0.714847 0.457146
+vt 0.770710 0.399951
+vt 0.294340 0.648692
+vt 0.486478 0.654776
+vt 0.625582 0.595636
+vt 0.609327 0.684658
+vt 0.667301 0.598793
+vt 0.287389 0.865088
+vt 0.263511 0.853169
+vt 0.325817 0.852738
+vt 0.406371 0.850976
+vt 0.371969 0.840382
+vt 0.442527 0.851796
+vt 0.474844 0.855190
+vt 0.568279 0.846967
+vt 0.607647 0.756332
+vt 0.651976 0.854846
+vt 0.606128 0.843308
+vt 0.221154 0.758521
+vt 0.230104 0.863886
+vt 0.193221 0.869320
+vt 0.260448 0.741251
+vt 0.321730 0.921172
+vt 0.346200 0.890326
+vt 0.362024 0.941773
+vt 0.375380 0.902107
+vt 0.392908 0.964840
+vt 0.544790 0.965753
+vt 0.522668 0.914546
+vt 0.566184 0.923220
+vt 0.604408 0.887767
+vt 0.606965 0.931164
+vt 0.649709 0.923961
+vt 0.228806 0.920907
+vt 0.207385 0.946556
+vt 0.275362 0.922078
+vt 0.327469 0.964789
+vt 0.406026 0.915883
+vt 0.437795 0.968096
+vt 0.445566 0.914686
+vt 0.489841 0.969470
+vt 0.484114 0.939168
+vt 0.601354 0.967112
+vt 0.651731 0.971502
+vt 0.222482 0.975243
+vt 0.278733 0.967515
+vt 0.392440 0.174672
+vt 0.415090 0.297313
+vt 0.436233 0.240506
+vt 0.519987 0.222109
+vt 0.757255 0.200698
+vt 0.816626 0.272928
+vt 0.747553 0.333078
+vt 0.033422 0.385327
+vt 0.011684 0.282235
+vt 0.054707 0.316290
+vt 0.115623 0.261045
+vt 0.350493 0.090625
+vt 0.338940 0.218461
+vt 0.445950 0.079457
+vt 0.464338 0.175041
+vt 0.380989 0.037019
+vt 0.036422 0.196193
+vt 0.075543 0.225447
+vt 0.372489 0.732640
+vt 0.535882 0.854209
+vt 0.223040 0.702554
+vt 0.259076 0.674020
+vt 0.848132 0.766804
+vt 0.805834 0.771441
+vt 0.769759 0.751159
+vt 0.751207 0.695101
+vt 0.879163 0.659678
+vt 0.883870 0.742090
+vt 0.768267 0.657994
+vt 0.839413 0.632272
+vt 0.736301 0.843294
+vt 0.736213 0.883353
+vt 0.711347 0.877839
+vt 0.761933 0.850481
+vt 0.787987 0.880467
+vt 0.802794 0.859699
+vt 0.822523 0.897925
+vt 0.789934 0.914403
+vt 0.806035 0.936092
+vt 0.775424 0.950303
+vt 0.737502 0.944110
+vt 0.756599 0.912255
+vt 0.713359 0.911406
+vt 0.504328 0.841048
+vt 0.501067 0.903951
+vt 0.685517 0.864697
+vt 0.325110 0.010174
+vt 0.405231 0.006782
+vt 0.773687 0.022459
+vt 0.807414 0.125645
+vt 0.247981 0.606152
+vt 0.214557 0.601679
+vt 0.837698 0.369087
+vt 0.846603 0.184271
+vt 0.679275 0.946229
+vt 0.360414 0.976879
+vt 0.671921 0.971162
+vt 0.200000 0.676100
+vt 0.750262 0.726158
+vt 0.823681 0.781100
+vt 0.897278 0.692787
+vt 0.802515 0.633711
+vt 0.788884 0.837122
+s 1
+usemtl Standard_7
+f 157/15/7 61/16/8 9/17/9
+f 144/18/10 63/19/11 11/20/12
+f 11/20/12 63/19/11 10/21/13
+f 16/22/14 18/23/15 69/24/16
+f 18/23/15 70/25/17 17/26/18
+f 18/23/15 72/27/19 70/25/17
+f 21/28/20 19/29/21 20/30/22
+f 20/30/22 19/29/21 72/27/19
+f 146/31/23 19/29/21 21/28/20
+f 22/32/24 147/33/25 74/34/26
+f 157/15/7 147/33/25 23/35/27
+f 85/36/28 101/37/29 98/38/30
+f 25/39/31 148/40/32 155/41/33
+f 25/39/31 149/42/34 148/40/32
+f 150/43/35 26/44/36 27/45/37
+f 29/46/38 28/47/39 150/43/35
+f 31/48/40 151/49/41 156/50/42
+f 31/48/40 152/51/43 151/49/41
+f 33/52/44 32/53/45 36/54/46
+f 77/55/47 39/56/48 86/57/49
+f 88/58/50 87/59/51 78/60/52
+f 78/60/52 79/61/53 88/58/50
+f 89/62/54 88/58/50 79/61/53
+f 79/61/53 80/63/55 89/62/54
+f 80/63/55 45/64/56 91/65/57
+f 80/63/55 91/65/57 89/62/54
+f 45/64/56 47/66/58 91/65/57
+f 34/67/59 92/68/60 48/69/61
+f 81/70/62 55/71/63 95/72/64
+f 96/73/65 95/74/64 55/75/63
+f 55/75/63 35/76/66 96/73/65
+f 33/52/44 135/77/67 136/78/68
+f 36/54/46 135/77/67 33/52/44
+f 42/79/69 41/80/70 40/81/71
+f 45/64/56 43/82/72 46/83/73
+f 46/83/73 43/82/72 44/84/74
+f 45/64/56 46/83/73 47/66/58
+f 140/85/75 47/66/58 46/83/73
+f 48/69/61 140/85/75 49/86/76
+f 34/67/59 49/86/76 50/87/77
+f 58/88/78 57/89/79 35/76/66
+f 135/77/67 60/90/80 62/91/81
+f 61/16/8 62/91/81 60/90/80
+f 63/19/11 64/92/82 62/91/81
+f 70/25/17 139/93/83 17/26/18
+f 70/25/17 71/94/84 139/93/83
+f 72/27/19 142/95/85 141/96/86
+f 61/16/8 60/90/80 9/17/9
+f 36/54/46 82/97/87 37/98/88
+f 39/56/48 77/55/47 38/99/89
+f 42/79/69 78/60/52 41/80/70
+f 43/82/72 80/63/55 79/61/53
+f 43/82/72 45/64/56 80/63/55
+f 50/87/77 51/100/90 34/67/59
+f 55/71/63 81/70/62 53/101/91
+f 37/98/88 82/97/87 57/89/79
+f 83/102/92 86/57/49 85/36/28
+f 86/57/49 83/102/92 32/53/45
+f 155/41/33 87/59/51 88/58/50
+f 90/103/93 89/62/54 91/65/57
+f 92/68/60 93/104/94 29/46/38
+f 29/46/38 93/104/94 30/105/95
+f 156/50/42 94/106/96 95/72/64
+f 98/38/30 99/107/97 100/108/98
+f 101/37/29 102/109/99 99/107/97
+f 148/40/32 165/110/100 163/111/101
+f 149/42/34 165/110/100 148/40/32
+f 166/112/102 165/110/100 149/42/34
+f 149/42/34 103/113/103 166/112/102
+f 28/47/39 106/114/104 150/43/35
+f 108/115/105 109/116/106 107/117/107
+f 152/51/43 109/116/106 151/49/41
+f 152/118/43 167/119/108 110/120/109
+f 100/108/98 167/119/108 153/121/110
+f 112/122/111 114/123/112 126/124/113
+f 164/125/114 126/124/113 114/123/112
+f 126/124/113 164/125/114 128/126/115
+f 131/127/116 119/128/117 120/129/118
+f 121/130/119 122/131/120 120/129/118
+f 121/130/119 123/132/121 122/131/120
+f 124/133/122 125/134/123 110/120/109
+f 99/107/97 111/135/124 167/119/108
+f 126/124/113 113/136/125 112/122/111
+f 115/137/126 129/138/127 128/126/115
+f 116/139/128 130/140/129 129/138/127
+f 117/141/130 130/140/129 116/139/128
+f 122/131/120 132/142/131 120/129/118
+f 123/132/121 133/143/132 132/142/131
+f 124/133/122 134/144/133 125/134/123
+f 124/133/122 158/145/134 134/144/133
+f 60/90/80 135/77/67 37/98/88
+f 136/78/68 64/92/82 38/99/89
+f 62/91/81 64/92/82 136/78/68
+f 65/146/135 138/147/136 40/81/71
+f 66/148/137 138/147/136 65/146/135
+f 138/147/136 44/84/74 43/82/72
+f 46/83/73 68/149/138 139/93/83
+f 44/84/74 68/149/138 46/83/73
+f 141/96/86 140/85/75 71/94/84
+f 141/96/86 142/95/85 50/87/77
+f 73/150/139 143/151/140 52/152/141
+f 54/153/142 143/154/140 56/155/143
+f 58/88/78 56/155/143 59/156/144
+f 60/90/80 37/98/88 59/156/144
+f 62/91/81 61/16/8 63/19/11
+f 63/19/11 144/18/10 64/92/82
+f 144/18/10 145/157/145 137/158/146
+f 137/158/146 64/92/82 144/18/10
+f 65/146/135 15/159/147 67/160/148
+f 15/159/147 65/146/135 13/161/149
+f 71/94/84 70/25/17 72/27/19
+f 142/95/85 72/27/19 19/29/21
+f 19/29/21 146/31/23 73/150/139
+f 73/150/139 142/95/85 19/29/21
+f 76/162/150 147/33/25 75/163/151
+f 76/162/150 74/34/26 147/33/25
+f 163/111/101 101/37/29 24/164/152
+f 105/165/153 26/44/36 150/43/35
+f 155/41/33 24/164/152 85/36/28
+f 155/41/33 88/58/50 25/39/31
+f 25/39/31 90/103/93 26/44/36
+f 26/44/36 90/103/93 27/45/37
+f 90/103/93 91/65/57 27/45/37
+f 27/45/37 92/68/60 29/46/38
+f 156/50/42 95/72/64 31/48/40
+f 31/166/40 154/167/154 153/121/110
+f 14/168/155 12/169/156 11/170/12
+f 14/168/155 157/171/7 20/172/22
+f 157/171/7 14/168/155 11/170/12
+f 14/168/155 20/172/22 16/173/14
+f 23/174/27 21/175/20 157/171/7
+f 157/171/7 21/175/20 20/172/22
+f 113/176/125 161/177/157 158/178/134
+f 113/176/125 127/179/158 161/177/157
+f 162/180/159 127/179/158 129/181/127
+f 130/182/129 162/180/159 129/181/127
+f 130/182/129 159/183/160 162/180/159
+f 131/184/116 159/183/160 130/182/129
+f 132/185/131 159/183/160 131/184/116
+f 133/186/132 160/187/161 132/185/131
+f 133/186/132 134/188/133 160/187/161
+f 160/187/161 134/188/133 161/177/157
+f 161/177/157 162/180/159 160/187/161
+f 114/123/112 102/109/99 163/111/101
+f 165/110/100 164/125/114 163/111/101
+f 114/123/112 163/111/101 164/125/114
+f 165/110/100 116/139/128 115/137/126
+f 119/128/117 104/189/162 105/165/153
+f 103/113/103 104/189/162 118/190/163
+f 120/129/118 105/165/153 106/114/104
+f 105/165/153 120/129/118 119/128/117
+f 121/130/119 106/114/104 107/117/107
+f 106/114/104 121/130/119 120/129/118
+f 110/191/109 123/132/121 109/116/106
+f 157/15/7 10/21/13 61/16/8
+f 12/192/156 145/157/145 144/18/10
+f 11/20/12 12/192/156 144/18/10
+f 12/192/156 13/161/149 145/157/145
+f 14/193/155 15/159/147 13/161/149
+f 16/22/14 69/24/16 15/159/147
+f 15/159/147 14/193/155 16/22/14
+f 18/23/15 17/26/18 69/24/16
+f 18/23/15 20/30/22 72/27/19
+f 22/194/24 74/195/26 146/31/23
+f 21/28/20 22/194/24 146/31/23
+f 22/32/24 23/35/27 147/33/25
+f 32/53/45 33/52/44 77/55/47 86/57/49
+f 83/102/92 85/36/28 98/38/30
+f 24/164/152 155/41/33 148/40/32
+f 25/39/31 26/44/36 149/42/34
+f 29/46/38 150/43/35 27/45/37
+f 28/47/39 29/46/38 108/115/105
+f 29/46/38 30/105/95 108/115/105
+f 151/49/41 108/115/105 30/105/95
+f 30/105/95 156/50/42 151/49/41
+f 31/166/40 153/121/110 152/118/43
+f 36/54/46 84/196/164 82/97/87
+f 84/196/164 36/54/46 32/53/45
+f 86/57/49 87/59/51 155/41/33 85/36/28
+f 86/57/49 39/56/48 87/59/51
+f 78/60/52 87/59/51 39/56/48
+f 48/69/61 91/65/57 47/66/58
+f 91/65/57 48/69/61 92/68/60
+f 34/67/59 93/104/94 92/68/60
+f 34/67/59 51/100/90 93/104/94
+f 93/104/94 51/100/90 94/106/96
+f 81/70/62 94/106/96 51/100/90
+f 81/70/62 95/72/64 94/106/96
+f 35/76/66 97/197/165 96/73/65
+f 35/76/66 82/97/87 97/197/165
+f 97/197/165 82/97/87 84/196/164
+f 36/54/46 37/98/88 135/77/67
+f 33/52/44 136/78/68 38/99/89
+f 41/80/70 39/56/48 40/81/71
+f 38/99/89 40/81/71 39/56/48
+f 40/81/71 138/147/136 42/79/69
+f 138/147/136 43/82/72 42/79/69
+f 48/69/61 47/66/58 140/85/75
+f 53/101/91 51/100/90 52/152/141
+f 50/87/77 52/152/141 51/100/90
+f 53/101/91 54/198/142 55/71/63
+f 53/101/91 143/151/140 54/198/142
+f 58/88/78 55/75/63 54/153/142
+f 56/155/143 58/88/78 54/153/142
+f 59/156/144 57/89/79 58/88/78
+f 137/158/146 145/157/145 65/146/135
+f 66/148/137 65/146/135 67/160/148
+f 69/24/16 68/149/138 67/160/148
+f 69/24/16 17/26/18 68/149/138
+f 17/26/18 139/93/83 68/149/138
+f 72/27/19 141/96/86 71/94/84
+f 74/195/26 143/151/140 73/150/139
+f 143/151/140 74/195/26 76/199/150
+f 56/155/143 76/162/150 75/163/151
+f 9/17/9 60/90/80 59/156/144
+f 38/99/89 77/55/47 33/52/44
+f 41/80/70 78/60/52 39/56/48
+f 42/79/69 43/82/72 79/61/53
+f 42/79/69 79/61/53 78/60/52
+f 49/86/76 34/67/59 48/69/61
+f 51/100/90 53/101/91 81/70/62
+f 55/75/63 58/88/78 35/76/66
+f 57/89/79 82/97/87 35/76/66
+f 154/167/154 84/196/164 83/102/92
+f 84/196/164 32/53/45 83/102/92
+f 93/104/94 94/106/96 156/50/42 30/105/95
+f 27/45/37 91/65/57 92/68/60
+f 112/122/111 113/136/125 158/145/134 111/135/124
+f 154/167/154 96/73/65 97/197/165
+f 154/167/154 97/197/165 84/196/164
+f 98/38/30 101/37/29 99/107/97
+f 101/37/29 163/111/101 102/109/99
+f 24/164/152 148/40/32 163/111/101
+f 149/42/34 26/44/36 103/113/103
+f 26/44/36 104/189/162 103/113/103
+f 26/44/36 105/165/153 104/189/162
+f 105/165/153 150/43/35 106/114/104
+f 28/47/39 107/117/107 106/114/104
+f 28/47/39 108/115/105 107/117/107
+f 152/51/43 110/191/109 109/116/106
+f 152/118/43 153/121/110 167/119/108
+f 128/126/115 164/125/114 115/137/126
+f 129/138/127 115/137/126 116/139/128
+f 103/113/103 117/141/130 116/139/128
+f 103/113/103 118/190/163 117/141/130
+f 119/128/117 117/141/130 118/190/163
+f 110/191/109 125/200/123 123/132/121
+f 167/119/108 111/135/124 124/133/122
+f 126/124/113 128/126/115 113/136/125
+f 127/201/158 113/136/125 128/126/115
+f 117/141/130 119/128/117 130/140/129
+f 119/128/117 131/127/116 130/140/129
+f 120/129/118 132/142/131 131/127/116
+f 123/132/121 132/142/131 122/131/120
+f 133/143/132 125/200/123 134/202/133
+f 123/132/121 125/200/123 133/143/132
+f 124/133/122 111/135/124 158/145/134
+f 62/91/81 136/78/68 135/77/67
+f 40/81/71 38/99/89 64/92/82
+f 137/158/146 40/81/71 64/92/82
+f 65/146/135 40/81/71 137/158/146
+f 44/84/74 138/147/136 66/148/137
+f 67/160/148 44/84/74 66/148/137
+f 67/160/148 68/149/138 44/84/74
+f 46/83/73 139/93/83 140/85/75
+f 139/93/83 71/94/84 140/85/75
+f 50/87/77 49/86/76 141/96/86
+f 49/86/76 140/85/75 141/96/86
+f 52/152/141 50/87/77 142/95/85
+f 53/101/91 52/152/141 143/151/140
+f 142/95/85 73/150/139 52/152/141
+f 143/154/140 76/162/150 56/155/143
+f 56/155/143 75/163/151 59/156/144
+f 57/89/79 59/156/144 37/98/88
+f 61/16/8 10/21/13 63/19/11
+f 13/161/149 65/146/135 145/157/145
+f 67/160/148 15/159/147 69/24/16
+f 73/150/139 146/31/23 74/195/26
+f 75/163/151 147/33/25 59/156/144
+f 9/17/9 59/156/144 147/33/25
+f 147/33/25 157/15/7 9/17/9
+f 109/116/106 108/115/105 151/49/41
+f 98/38/30 100/108/98 153/121/110
+f 24/164/152 101/37/29 85/36/28
+f 90/103/93 25/39/31 89/62/54
+f 88/58/50 89/62/54 25/39/31
+f 154/167/154 31/166/40 96/73/65
+f 95/203/64 96/73/65 31/166/40
+f 10/204/13 157/171/7 11/170/12
+f 13/205/149 12/169/156 14/168/155
+f 16/173/14 20/172/22 18/206/15
+f 21/175/20 23/174/27 22/207/24
+f 128/208/115 129/181/127 127/179/158
+f 98/38/30 153/121/110 154/167/154 83/102/92
+f 160/187/161 159/183/160 132/185/131
+f 134/188/133 158/178/134 161/177/157
+f 161/177/157 127/179/158 162/180/159
+f 162/180/159 159/183/160 160/187/161
+f 99/107/97 112/122/111 111/135/124
+f 102/109/99 114/123/112 112/122/111
+f 112/122/111 99/107/97 102/109/99
+f 164/125/114 165/110/100 115/137/126
+f 116/139/128 165/110/100 166/112/102
+f 166/112/102 103/113/103 116/139/128
+f 119/128/117 118/190/163 104/189/162
+f 109/116/106 121/130/119 107/117/107
+f 121/130/119 109/116/106 123/132/121
+f 167/119/108 124/133/122 110/120/109
+f 167/119/108 100/108/98 99/107/97
+
+</script>
+
+<script id="ball.obj" type="text/obj">
+	# Blender 4.2.0
+# www.blender.org
+mtllib ball.mtl
+o ball
+v -6.814124 4.252520 5.535172
+v -1.196992 1.740605 5.895170
+v 1.086644 2.654951 7.110036
+v 4.561125 2.827508 5.785369
+v 6.049526 4.501776 6.628491
+v -5.476415 2.112445 3.463907
+v -3.990828 1.840676 4.682826
+v 2.894143 1.298236 4.354810
+v 6.154736 2.737424 3.845031
+v -4.896059 1.148981 0.719438
+v -1.444678 0.436327 2.533729
+v 1.323759 0.286178 2.132133
+v 7.074291 2.759139 1.714566
+v -1.102209 0.092432 -0.707585
+v 4.398656 0.951835 0.734115
+v 1.914258 0.239263 -1.007479
+v 6.096949 1.984771 -1.249846
+v -6.695831 2.475182 -1.929608
+v -2.897708 0.906147 -3.368611
+v 4.927330 1.928680 -3.827132
+v 7.674093 3.987056 -3.672388
+v -6.006086 2.882267 -4.329736
+v 1.657906 1.255191 -4.843722
+v -1.028298 1.195068 -4.898369
+v 4.123991 2.568873 -5.711464
+v -6.461095 4.492213 -6.171084
+v -3.670923 2.700935 -6.205200
+v 6.518438 4.704609 -6.342868
+v -6.163729 17.574823 6.658101
+v 1.642759 19.224709 7.466837
+v 4.908970 18.468983 6.708023
+v 5.789774 16.757015 7.597303
+v -3.628366 20.829786 3.950636
+v -4.073610 19.521938 5.960917
+v 2.072168 21.004900 4.442611
+v 4.156803 20.293215 4.573548
+v 6.848052 17.880569 5.551594
+v -6.496846 19.990923 1.206964
+v -7.497193 18.627439 3.343283
+v -0.156381 21.286604 4.363889
+v 8.609996 17.654663 2.366545
+v 6.621621 19.543739 2.737589
+v -8.114395 18.620455 0.067256
+v -4.006724 21.361753 0.599837
+v -0.865800 22.113630 0.573257
+v 2.433085 21.789913 1.539617
+v 5.020600 20.853178 1.049087
+v -4.770493 20.677479 -2.955031
+v -1.435250 21.924561 -1.813817
+v 2.426471 21.561169 -2.744188
+v 4.859840 20.710695 -2.552570
+v 7.310976 19.375992 -1.040890
+v -6.652510 18.711704 -4.528405
+v -4.220733 19.445681 -5.996704
+v -0.694445 21.290205 -4.210696
+v 4.285834 19.584044 -5.667803
+v -4.746615 18.113319 -7.236551
+v -1.111374 19.663485 -7.020277
+v 5.975006 17.693050 -6.715663
+v -2.991369 4.691808 8.634779
+v -4.739997 4.002474 7.134153
+v 0.377108 3.986574 8.608941
+v 3.630015 4.359039 8.053000
+v -6.037200 7.566115 8.625507
+v -5.881178 5.808921 7.791586
+v 2.169901 6.428353 9.934223
+v 6.676045 6.535748 7.663155
+v -7.406100 9.394384 8.074248
+v -4.604187 10.085298 9.989631
+v 3.818392 7.048027 9.601722
+v 3.813289 9.905863 10.283679
+v 7.009820 8.778109 8.292332
+v -8.610005 11.955727 6.934982
+v -1.575656 10.303862 10.940647
+v 2.823173 12.429867 10.656149
+v 6.078639 11.738894 9.195050
+v -6.463830 12.616005 8.870842
+v -4.589983 15.692804 8.994182
+v -2.889706 13.776476 10.361359
+v 1.947325 15.656846 9.891824
+v 5.173029 14.875620 9.038377
+v 7.422549 15.065722 7.254148
+v -7.542109 14.848351 7.235463
+v -3.468434 17.275715 8.564177
+v -2.978915 18.499697 7.747500
+v 7.887839 4.570984 4.219031
+v 9.249933 5.339492 1.753447
+v 8.381057 3.892120 -0.564759
+v 9.194301 7.092638 4.770086
+v 9.956452 6.456186 -1.365024
+v 7.080294 6.895994 -7.491292
+v 10.833665 9.223627 1.571141
+v 9.388044 7.013484 -4.138428
+v 8.699334 10.549885 6.812094
+v 10.089372 10.432487 4.483712
+v 10.538368 9.723481 -3.099952
+v 9.044753 9.395811 -6.139030
+v 7.643453 10.571554 -7.965833
+v 7.973745 12.130946 7.636721
+v 9.704029 14.074203 4.494554
+v 10.844267 12.461930 1.685852
+v 10.222892 15.170902 0.707548
+v 11.022212 11.955931 -0.872574
+v 10.611438 13.314481 -2.212209
+v 9.120214 13.026638 -5.991623
+v 9.509869 16.220993 -2.214637
+v 8.807267 15.667966 -4.786815
+v 7.185097 15.500487 -7.243058
+v 8.598857 16.414423 4.506246
+v 8.725291 17.840374 -0.855579
+v 7.367743 18.262453 -4.223742
+v 4.231561 5.247669 -8.401337
+v 3.509264 3.434430 -7.244271
+v 1.607910 5.057096 -9.176375
+v -0.425504 3.182611 -7.753998
+v -4.030624 4.166133 -7.719182
+v -0.356301 6.587125 -10.066936
+v -2.211962 5.526028 -9.317975
+v 5.935494 9.215703 -9.128336
+v 4.052953 8.456435 -9.971499
+v 1.000325 8.975110 -10.783428
+v -3.061680 8.737599 -10.354933
+v -5.402773 6.738569 -8.643476
+v 3.897976 12.170684 -10.253546
+v 1.262256 12.347713 -10.867003
+v -1.410423 12.522374 -10.885713
+v -3.917342 11.811795 -10.293799
+v -6.287591 9.801208 -9.009412
+v 6.602679 12.855091 -8.746500
+v 4.674099 14.623227 -9.380135
+v 1.259633 15.504862 -10.098857
+v -4.348883 15.279782 -9.315254
+v -5.939944 12.978568 -9.129502
+v -7.548593 14.880296 -7.209794
+v 3.907799 17.125452 -8.475493
+v -1.837082 17.121609 -9.167355
+v 2.497163 19.554571 -6.761105
+v 1.027766 18.227890 -8.480979
+v -6.803387 16.757238 -6.733758
+v -7.892128 4.571459 -4.175941
+v -9.305401 5.229568 -1.060017
+v -7.927567 3.432369 0.806668
+v -7.920319 4.190795 3.543846
+v -7.540123 7.372133 -7.244887
+v -9.340361 6.869898 -4.122988
+v -9.951833 6.451244 1.429192
+v -8.486405 6.643388 5.578506
+v -10.644345 8.977432 -2.104288
+v -9.151885 9.800696 -6.105661
+v -10.682958 12.142643 -2.741410
+v -10.945518 9.701621 0.975715
+v -9.885426 9.265619 4.721416
+v -7.976836 12.130160 -7.625570
+v -9.415170 14.493454 -4.765580
+v -10.820671 13.208083 1.397174
+v -9.441874 13.010467 5.406205
+v -9.605229 16.070856 -2.147851
+v -9.726090 16.241339 0.895108
+v -9.062910 15.883842 4.277531
+v -7.977649 18.165466 -3.099620
+v 1.178421 9.306573 10.853003
+v -0.002321 4.953539 9.194980
+v 0.030652 8.423740 10.616867
+v -1.025015 8.076561 10.369259
+v -1.866811 7.249402 10.318286
+v -1.538654 5.806717 9.637796
+v 1.153652 5.736724 9.356028
+v -0.530877 9.277440 8.117276
+v -1.619853 6.823509 9.844575
+v -1.578339 7.536279 7.487183
+v -0.989725 5.651367 9.237700
+v 0.227345 5.359789 9.177029
+v 1.641015 6.506393 9.796018
+v 1.274837 7.854670 10.382657
+v 1.409534 8.427669 7.959082
+v 1.269302 18.214006 8.283839
+v 1.275059 16.565447 9.381732
+v 2.356303 16.471918 9.185746
+v 3.295728 17.361662 8.563898
+v 2.872928 17.493916 8.358999
+v 2.845215 16.840139 8.745870
+v 2.495311 17.905983 8.018698
+v 1.696253 18.192133 8.092032
+v -1.391004 19.186865 7.544228
+v -0.905461 17.958775 8.380369
+v -1.937168 18.204430 8.114743
+v -2.824549 17.424417 8.467044
+v -2.074887 16.423321 9.393127
+v -1.047383 16.581818 9.298081
+v 0.421370 17.488598 9.023833
+v 0.082763 14.466505 10.588345
+v 0.814257 9.133819 8.042402
+v -1.387657 8.502229 7.784504
+v -0.986789 6.668284 6.984875
+v 0.448329 6.418145 6.874362
+v 1.622687 7.725799 7.439465
+v 1.374881 7.070026 7.151820
+v 0.724528 17.391024 8.830445
+v 1.325732 15.591203 7.956626
+v 1.735895 17.177029 6.756368
+v -0.571880 17.345947 9.010568
+v -1.579684 17.195391 6.785777
+v -2.425644 16.517628 9.003013
+v 0.992313 16.991474 7.105633
+v 2.810634 16.143471 7.288596
+v -0.705572 16.805256 7.220101
+v -0.638068 16.091934 7.734502
+v -2.305829 15.588474 7.747555
+v -1.318206 15.540450 7.987937
+v 0.697282 16.305603 7.598959
+v 2.333266 15.560942 7.752552
+v 2.494182 16.894066 6.798624
+v -2.353414 16.868567 6.843873
+v -2.674062 16.338415 7.196991
+vn -0.4098 -0.6624 0.6272
+vn -0.1045 -0.8477 0.5201
+vn -0.2715 -0.5789 0.7689
+vn 0.3298 -0.6104 0.7202
+vn 0.1186 -0.7817 0.6123
+vn 0.3935 -0.7587 0.5192
+vn -0.6121 -0.6174 0.4942
+vn -0.5089 -0.8110 0.2887
+vn -0.3451 -0.8404 0.4178
+vn 0.2535 -0.8863 0.3875
+vn 0.5531 -0.5844 0.5938
+vn 0.5422 -0.7704 0.3352
+vn 0.7209 -0.5821 0.3762
+vn -0.4303 -0.9010 0.0550
+vn -0.7148 -0.6957 0.0716
+vn -0.7312 -0.6155 0.2942
+vn -0.1419 -0.9625 0.2310
+vn 0.1131 -0.9734 0.1995
+vn 0.3994 -0.9147 0.0614
+vn 0.6388 -0.7555 0.1456
+vn -0.6006 -0.7819 -0.1671
+vn -0.2755 -0.9189 -0.2822
+vn -0.1040 -0.9919 -0.0733
+vn 0.1790 -0.9764 -0.1208
+vn -0.0769 -0.8963 -0.4367
+vn 0.4408 -0.8382 -0.3212
+vn 0.1448 -0.8956 -0.4206
+vn -0.5930 -0.5821 -0.5564
+vn -0.5251 -0.7606 -0.3818
+vn -0.7316 -0.5777 -0.3620
+vn -0.3206 -0.7745 -0.5453
+vn 0.5975 -0.5806 -0.5531
+vn 0.7005 -0.6315 -0.3323
+vn -0.0337 -0.7206 -0.6925
+vn -0.2648 0.6571 0.7057
+vn -0.3725 0.7715 0.5159
+vn -0.5648 0.5815 0.5855
+vn -0.6706 0.6763 0.3050
+vn -0.3209 0.8838 0.3405
+vn 0.3807 0.8338 0.3999
+vn 0.1867 0.8984 0.3974
+vn 0.1478 0.7419 0.6540
+vn 0.6228 0.6183 0.4794
+vn 0.5949 0.7679 0.2373
+vn 0.7880 0.5825 0.1993
+vn -0.5669 0.8192 0.0872
+vn -0.0664 0.9957 0.0652
+vn -0.0315 0.9227 0.3843
+vn 0.2175 0.9691 0.1165
+vn 0.4447 0.8922 0.0792
+vn -0.7336 0.6794 -0.0154
+vn -0.4275 0.8692 -0.2484
+vn -0.3600 0.9317 0.0488
+vn -0.1285 0.9777 -0.1659
+vn 0.6476 0.7573 -0.0843
+vn -0.7252 0.6332 -0.2706
+vn -0.0607 0.9183 -0.3912
+vn 0.2020 0.9486 -0.2438
+vn 0.6668 0.6466 -0.3706
+vn 0.4381 0.8718 -0.2193
+vn 0.8000 0.5962 -0.0676
+vn -0.3583 0.7795 -0.5138
+vn -0.0940 0.7903 -0.6054
+vn 0.3897 0.7834 -0.4841
+vn 0.2161 0.7832 -0.5830
+vn 0.5402 0.5921 -0.5980
+vn -0.4171 0.6192 -0.6653
+vn -0.6008 0.6889 -0.4054
+vn 0.0921 0.6324 -0.7692
+vn 0.0242 -0.6478 0.7614
+vn -0.5334 -0.3092 0.7873
+vn -0.5398 -0.4606 0.7046
+vn 0.0281 -0.3998 0.9162
+vn -0.0294 -0.3218 0.9463
+vn 0.0859 -0.4025 0.9114
+vn -0.4127 -0.0809 0.9073
+vn 0.1003 -0.1350 0.9858
+vn 0.3627 -0.1113 0.9252
+vn -0.5637 0.1315 0.8155
+vn -0.2662 0.2206 0.9384
+vn -0.6779 -0.1492 0.7199
+vn 0.2413 0.1177 0.9633
+vn 0.8006 -0.0630 0.5959
+vn 0.7209 0.1082 0.6845
+vn 0.6304 -0.1963 0.7510
+vn -0.6802 0.3393 0.6498
+vn -0.4248 0.3873 0.8183
+vn 0.1930 0.4226 0.8855
+vn -0.0030 0.2789 0.9603
+vn 0.4586 0.3127 0.8318
+vn 0.5206 0.5004 0.6918
+vn 0.1550 0.5481 0.8219
+vn 0.6816 0.3350 0.6506
+vn -0.2757 0.5493 0.7888
+vn 0.8495 -0.5038 0.1565
+vn 0.7586 -0.6491 -0.0571
+vn 0.8331 -0.3504 0.4280
+vn 0.9064 -0.4066 -0.1147
+vn 0.9536 -0.1175 -0.2771
+vn 0.8434 -0.3774 -0.3824
+vn 0.8266 -0.1482 -0.5430
+vn 0.6451 -0.3718 -0.6675
+vn 0.8803 0.2591 0.3974
+vn 0.9736 -0.1882 0.1290
+vn 0.9772 0.1322 0.1664
+vn 0.9126 -0.0541 0.4054
+vn 0.9953 0.0616 -0.0749
+vn 0.9494 0.2136 -0.2304
+vn 0.8384 0.1673 -0.5187
+vn 0.6963 -0.0471 -0.7162
+vn 0.7914 0.4693 0.3918
+vn 0.9246 0.3743 0.0710
+vn 0.8704 0.4430 -0.2148
+vn 0.8098 0.4073 -0.4223
+vn 0.1411 -0.5285 -0.8371
+vn -0.1974 -0.4939 -0.8468
+vn -0.4751 -0.3819 -0.7927
+vn -0.6929 -0.3297 -0.6413
+vn 0.3526 -0.2277 -0.9077
+vn 0.3888 -0.4983 -0.7749
+vn -0.0247 -0.3849 -0.9226
+vn 0.0852 -0.1786 -0.9802
+vn -0.2637 -0.2032 -0.9430
+vn -0.5639 -0.1160 -0.8176
+vn -0.8391 -0.1031 -0.5341
+vn 0.5896 0.1420 -0.7951
+vn -0.1250 0.1292 -0.9837
+vn 0.1284 0.0975 -0.9869
+vn -0.5319 0.1658 -0.8304
+vn -0.3490 0.0588 -0.9353
+vn -0.7355 0.0811 -0.6726
+vn 0.1053 0.3739 -0.9215
+vn 0.3389 0.0791 -0.9375
+vn -0.1670 0.5182 -0.8388
+vn -0.3786 0.3650 -0.8505
+vn 0.4064 0.3155 -0.8575
+vn 0.6540 0.3875 -0.6497
+vn 0.3509 0.5326 -0.7702
+vn -0.8465 -0.5214 -0.1071
+vn -0.9022 -0.4096 0.1352
+vn -0.8503 -0.3741 -0.3703
+vn -0.7780 -0.3859 0.4958
+vn -0.9884 -0.1199 0.0933
+vn -0.9610 -0.1968 -0.1942
+vn -0.8984 -0.1550 0.4108
+vn -0.8550 0.2973 -0.4249
+vn -0.9645 0.0979 -0.2454
+vn -0.9750 0.1839 0.1243
+vn -0.8776 0.1672 0.4493
+vn -0.7794 0.0607 0.6236
+vn -0.8843 0.4304 -0.1808
+vn -0.8853 0.4591 0.0743
+vn -0.8247 0.4230 0.3754
+vn 0.3873 -0.3386 0.8575
+vn 0.5904 -0.5619 -0.5794
+vn -0.0337 -0.7948 0.6060
+vn 0.9316 -0.0891 0.3524
+vn 0.1530 -0.3447 0.9262
+vn 0.5866 0.6369 0.5003
+vn -0.1396 0.5422 0.8286
+vn -0.6610 0.7125 0.2354
+vn -0.7284 -0.2304 0.6452
+vn -0.4767 -0.6036 0.6391
+vn 0.6715 -0.5700 0.4736
+vn 0.8386 -0.0626 0.5412
+vn 0.4541 0.3256 0.8293
+vn -0.1676 0.4373 0.8836
+vn -0.7574 -0.2159 0.6162
+vn -0.8423 -0.5189 0.1460
+vn -0.3686 -0.8605 0.3517
+vn 0.0082 0.8770 0.4804
+vn 0.1560 0.5539 0.8179
+vn 0.8626 0.2649 0.4310
+vn 0.4429 0.1000 0.8910
+vn 0.5538 0.8035 0.2183
+vn -0.8603 0.4713 -0.1941
+vn -0.7727 -0.3435 0.5338
+vn -0.1011 -0.9848 0.1414
+vn -0.5377 -0.8397 0.0757
+vn -0.1160 0.7324 0.6709
+vn -0.8175 -0.2572 0.5153
+vn -0.6048 0.4563 0.6527
+vn 0.8237 0.2973 -0.4828
+vn 0.5359 0.3148 0.7834
+vn 0.0061 0.0328 0.9994
+vn 0.4267 0.6844 0.5912
+vn -0.1326 -0.0396 0.9904
+vn 0.2543 -0.9154 0.3119
+vn -0.6006 0.1592 0.7836
+vn -0.3111 0.9334 0.1790
+vn -0.7102 0.4772 0.5176
+vn -0.4526 -0.0524 0.8902
+vn 0.1392 -0.2468 0.9590
+vn -0.1585 -0.2716 0.9493
+vn 0.4273 -0.0364 0.9034
+vn 0.7085 0.3927 0.5864
+vn 0.4361 0.8688 0.2346
+vn -0.2881 0.9532 0.0916
+vn -0.4374 0.2906 -0.8510
+vn 0.6661 -0.1264 0.7351
+vn 0.8328 0.4122 0.3695
+vn -0.7186 0.0203 0.6951
+vn -0.7692 0.5624 0.3034
+vn 0.5425 -0.8317 -0.1179
+vn 0.2945 -0.6995 -0.6511
+vn 0.3797 -0.7748 -0.5054
+vn -0.3548 -0.6207 -0.6992
+vn 0.6093 -0.4010 0.6841
+vn -0.6260 0.5085 -0.5912
+vn 0.5371 0.0605 0.8413
+vn 0.5372 -0.1538 -0.8293
+vn -0.6878 0.3434 -0.6395
+vn -0.2974 0.9233 0.2430
+vn 0.3757 0.9234 0.0785
+vt 0.629903 0.589835
+vt 0.686281 0.546317
+vt 0.663907 0.607097
+vt 0.769334 0.597522
+vt 0.728047 0.564992
+vt 0.789254 0.560733
+vt 0.588320 0.587835
+vt 0.598891 0.537041
+vt 0.639986 0.543731
+vt 0.761143 0.526211
+vt 0.812816 0.592639
+vt 0.823561 0.541751
+vt 0.854960 0.576001
+vt 0.592764 0.490665
+vt 0.524630 0.538894
+vt 0.550337 0.575399
+vt 0.672544 0.494283
+vt 0.726344 0.484720
+vt 0.791813 0.472312
+vt 0.851750 0.520711
+vt 0.524185 0.497468
+vt 0.616650 0.440939
+vt 0.671878 0.446140
+vt 0.735693 0.434257
+vt 0.311682 0.076126
+vt 0.297561 0.013750
+vt 0.366356 0.051186
+vt 0.172024 0.080708
+vt 0.236433 0.017908
+vt 0.251547 0.078443
+vt 0.425494 0.153980
+vt 0.427466 0.104303
+vt 0.472074 0.137988
+vt 0.367378 0.118423
+vt 0.153216 0.163121
+vt 0.110117 0.127957
+vt 0.299767 0.139348
+vt 0.657271 0.831832
+vt 0.635615 0.856184
+vt 0.600653 0.817361
+vt 0.558929 0.853373
+vt 0.637893 0.894289
+vt 0.792377 0.873297
+vt 0.750444 0.888948
+vt 0.737884 0.842757
+vt 0.834907 0.827450
+vt 0.849764 0.876302
+vt 0.895026 0.836886
+vt 0.570242 0.906822
+vt 0.691149 0.955134
+vt 0.704168 0.897355
+vt 0.767286 0.935340
+vt 0.824922 0.921705
+vt 0.516976 0.887423
+vt 0.574716 0.958472
+vt 0.623815 0.944004
+vt 0.682625 0.988455
+vt 0.893806 0.906825
+vt 0.410929 0.522171
+vt 0.489232 0.463956
+vt 0.497293 0.511879
+vt 0.332369 0.566900
+vt 0.310574 0.524809
+vt 0.236403 0.547830
+vt 0.125701 0.461115
+vt 0.174642 0.532120
+vt 0.099971 0.511284
+vt 0.075492 0.479990
+vt 0.387710 0.474856
+vt 0.319749 0.465972
+vt 0.201338 0.477549
+vt 0.245011 0.466541
+vt 0.173252 0.431874
+vt 0.390530 0.431841
+vt 0.445199 0.463999
+vt 0.273689 0.431379
+vt 0.716985 0.592492
+vt 0.612785 0.651717
+vt 0.613389 0.619816
+vt 0.683448 0.648753
+vt 0.708669 0.610935
+vt 0.737593 0.635330
+vt 0.637527 0.691467
+vt 0.725777 0.679218
+vt 0.768859 0.688319
+vt 0.607920 0.730542
+vt 0.663701 0.748566
+vt 0.588125 0.681664
+vt 0.753667 0.726222
+vt 0.857411 0.695571
+vt 0.840213 0.724906
+vt 0.821993 0.669497
+vt 0.583201 0.771965
+vt 0.632627 0.780571
+vt 0.739058 0.778158
+vt 0.707859 0.759825
+vt 0.791708 0.766646
+vt 0.805591 0.802549
+vt 0.761947 0.807048
+vt 0.835039 0.774813
+vt 0.650447 0.807148
+vt 0.899294 0.574321
+vt 0.900040 0.516797
+vt 0.874505 0.627406
+vt 0.948019 0.574536
+vt 0.037516 0.265573
+vt 0.077642 0.206457
+vt 0.103031 0.261107
+vt 0.036615 0.183291
+vt 0.148882 0.213715
+vt 0.892032 0.753735
+vt 0.935082 0.653571
+vt 0.938583 0.724479
+vt 0.892681 0.691914
+vt 0.974928 0.704213
+vt 0.981562 0.632817
+vt 0.029712 0.353943
+vt 0.011667 0.288597
+vt 0.101840 0.337680
+vt 0.141874 0.286072
+vt 0.872839 0.805261
+vt 0.947277 0.784131
+vt 0.987849 0.744059
+vt 0.966323 0.821590
+vt 0.937819 0.856007
+vt 0.052435 0.425083
+vt 0.096341 0.399404
+vt 0.260818 0.180736
+vt 0.332900 0.188810
+vt 0.393843 0.210590
+vt 0.442954 0.216300
+vt 0.218782 0.246448
+vt 0.208639 0.183948
+vt 0.297139 0.211218
+vt 0.271016 0.257710
+vt 0.346186 0.249305
+vt 0.407140 0.268295
+vt 0.483637 0.263355
+vt 0.169466 0.329940
+vt 0.316689 0.319003
+vt 0.269153 0.316650
+vt 0.405412 0.328418
+vt 0.363394 0.306483
+vt 0.449033 0.313122
+vt 0.270422 0.373079
+vt 0.221097 0.315117
+vt 0.328324 0.407532
+vt 0.373842 0.374070
+vt 0.205882 0.363660
+vt 0.149381 0.386085
+vt 0.220857 0.409631
+vt 0.460627 0.073762
+vt 0.530577 0.140980
+vt 0.473070 0.568432
+vt 0.491570 0.613093
+vt 0.508579 0.193345
+vt 0.558360 0.630042
+vt 0.466237 0.679992
+vt 0.430207 0.660468
+vt 0.529308 0.673714
+vt 0.501692 0.364410
+vt 0.430121 0.748015
+vt 0.475246 0.754123
+vt 0.540745 0.741777
+vt 0.565851 0.719151
+vt 0.551831 0.314747
+vt 0.537427 0.416534
+vt 0.455148 0.834378
+vt 0.489741 0.821648
+vt 0.537769 0.795792
+vt 0.495449 0.894673
+vt 0.770564 0.645497
+vt 0.696545 0.656811
+vt 0.710319 0.665350
+vt 0.688894 0.640022
+vt 0.688557 0.624694
+vt 0.696846 0.619803
+vt 0.714262 0.615001
+vt 0.725974 0.621431
+vt 0.732893 0.636851
+vt 0.727546 0.655427
+vt 0.258533 0.866109
+vt 0.250657 0.882582
+vt 0.241287 0.858528
+vt 0.257850 0.856714
+vt 0.254183 0.834553
+vt 0.263283 0.846238
+vt 0.276676 0.827662
+vt 0.276395 0.843560
+vt 0.295273 0.835303
+vt 0.288231 0.858985
+vt 0.305376 0.851891
+vt 0.297702 0.879420
+vt 0.285983 0.868187
+vt 0.283900 0.870900
+vt 0.675513 0.792442
+vt 0.716447 0.808187
+vt 0.719407 0.808982
+vt 0.728354 0.823638
+vt 0.728845 0.793875
+vt 0.755324 0.803237
+vt 0.755691 0.814520
+vt 0.736483 0.824325
+vt 0.749590 0.820823
+vt 0.688013 0.842703
+vt 0.691917 0.820228
+vt 0.698834 0.806951
+vt 0.666962 0.797677
+vt 0.661402 0.812030
+vt 0.673549 0.825291
+vt 0.792264 0.833774
+vt 0.684868 0.694737
+vt 0.696200 0.151000
+vt 0.697038 0.112916
+vt 0.710414 0.146558
+vt 0.685299 0.120274
+vt 0.690139 0.059418
+vt 0.684772 0.064559
+vt 0.683518 0.035196
+vt 0.159956 0.889806
+vt 0.137531 0.905704
+vt 0.168545 0.868644
+vt 0.096926 0.902203
+vt 0.076629 0.874554
+vt 0.098062 0.821037
+vt 0.142955 0.820493
+vt 0.165114 0.840861
+vt 0.341123 0.940840
+vt 0.354247 0.940501
+vt 0.346828 0.946705
+vt 0.343978 0.955941
+vt 0.357163 0.952658
+vt 0.349803 0.963835
+vt 0.336619 0.960052
+vt 0.331938 0.968986
+vt 0.277288 0.967486
+vt 0.261919 0.967749
+vt 0.268124 0.960066
+vt 0.263300 0.957800
+vt 0.259904 0.954910
+vt 0.249082 0.952210
+vt 0.257407 0.949012
+vt 0.262873 0.940694
+vt 0.256287 0.932872
+vt 0.270009 0.927891
+vt 0.272865 0.938605
+vt 0.279301 0.931257
+vt 0.879004 0.097091
+vt 0.869703 0.072104
+vt 0.893277 0.083500
+vt 0.886979 0.066828
+vt 0.892297 0.103400
+vt 0.905273 0.087773
+vt 0.847659 0.066251
+vt 0.827209 0.078604
+vt 0.828110 0.061876
+vt 0.839096 0.043658
+vt 0.818569 0.051844
+vt 0.171404 0.922092
+vt 0.187883 0.942967
+vt 0.180603 0.970340
+vt 0.158963 0.979456
+vt 0.126823 0.945763
+vt 0.051094 0.969374
+vt 0.042498 0.949293
+vt 0.101574 0.962178
+vt 0.084373 0.918267
+vt 0.055438 0.923762
+vt 0.103394 0.936179
+vt 0.846680 0.465090
+vt 0.842646 0.952967
+vt 0.779168 0.977222
+vt 0.169041 0.028986
+vt 0.128656 0.061980
+vt 0.074420 0.099630
+vt 0.219705 0.143158
+vt 0.197817 0.111452
+vt 0.370788 0.157121
+vt 0.818823 0.632890
+vt 0.433191 0.409348
+vt 0.805897 0.718263
+vt 0.178525 0.260354
+vt 0.444681 0.369153
+vt 0.558003 0.237007
+vt 0.285945 0.849944
+vt 0.271920 0.875692
+vt 0.277870 0.890787
+vt 0.262111 0.871402
+vt 0.745516 0.793049
+vt 0.690368 0.796425
+vt 0.712119 0.078128
+vt 0.706964 0.069658
+vt 0.720470 0.063355
+vt 0.074836 0.850443
+vt 0.341570 0.930329
+vt 0.332809 0.938219
+vt 0.325601 0.930239
+vt 0.878800 0.043561
+vt 0.897511 0.052081
+vt 0.909900 0.031700
+vt 0.912124 0.050892
+vt 0.905262 0.047254
+vt 0.925504 0.079283
+vt 0.928550 0.070340
+vt 0.935904 0.074472
+vt 0.917810 0.084792
+vt 0.918500 0.105000
+vt 0.912707 0.089232
+vt 0.839184 0.092029
+vt 0.814528 0.086936
+vt 0.805913 0.049793
+vt 0.811300 0.028100
+vt 0.811780 0.047400
+vt 0.134823 0.970827
+vt 0.142855 0.922206
+vt 0.073548 0.977390
+s 1
+usemtl 01___Default
+f 61/1/1 2/2/2 60/3/3
+f 63/4/4 3/5/5 4/6/6
+f 1/7/7 6/8/8 7/9/9
+f 3/5/5 2/2/2 8/10/10
+f 5/11/11 9/12/12 86/13/13
+f 10/14/14 6/8/8 142/15/15
+f 143/16/16 142/15/15 6/8/8
+f 11/17/17 7/9/9 10/14/14
+f 6/8/8 10/14/14 7/9/9
+f 8/10/10 12/18/18 15/19/19
+f 9/12/12 15/19/19 13/20/20
+f 15/19/19 9/12/12 8/10/10
+f 10/14/14 18/21/21 19/22/22
+f 12/18/18 14/23/23 16/24/24
+f 24/25/25 14/26/23 19/27/22
+f 20/28/26 16/29/24 23/30/27
+f 26/31/28 22/32/29 140/33/30
+f 19/27/22 22/32/29 27/34/31
+f 20/28/26 28/35/32 21/36/33
+f 24/25/25 27/34/31 115/37/34
+f 85/38/35 34/39/36 29/40/37
+f 29/40/37 34/39/36 39/41/38
+f 33/42/39 39/41/38 34/39/36
+f 36/43/40 35/44/41 30/45/42
+f 36/43/40 37/46/43 42/47/44
+f 42/47/44 37/46/43 41/48/45
+f 39/41/38 33/42/39 38/49/46
+f 45/50/47 33/42/39 40/51/48
+f 40/51/48 35/44/41 46/52/49
+f 46/52/49 36/43/40 47/53/50
+f 36/43/40 46/52/49 35/44/41
+f 43/54/51 38/49/46 48/55/52
+f 48/55/52 44/56/53 49/57/54
+f 41/48/45 52/58/55 42/47/44
+f 48/59/52 160/60/56 43/61/51
+f 48/59/52 49/62/54 55/63/57
+f 49/62/54 50/64/58 55/63/57
+f 111/65/59 51/66/60 52/67/55
+f 111/65/59 52/67/55 110/68/61
+f 54/69/62 55/63/57 58/70/63
+f 55/63/57 54/69/62 48/59/52
+f 50/64/58 56/71/64 137/72/65
+f 51/66/60 111/65/59 56/71/64
+f 59/73/66 56/71/64 111/65/59
+f 54/69/62 57/74/67 53/75/68
+f 58/70/63 137/72/65 138/76/69
+f 56/71/64 59/73/66 137/72/65
+f 3/5/5 63/4/4 62/77/70
+f 64/78/71 65/79/72 60/3/3
+f 60/3/3 165/80/73 64/78/71
+f 162/81/74 62/77/70 66/82/75
+f 69/83/76 64/78/71 165/80/73
+f 161/84/77 66/82/75 71/85/78
+f 77/86/79 69/83/76 79/87/80
+f 68/88/81 69/83/76 77/86/79
+f 71/85/78 75/89/82 161/84/77
+f 94/90/83 99/91/84 72/92/85
+f 83/93/86 77/86/79 78/94/87
+f 80/95/88 191/96/89 75/89/82
+f 81/97/90 32/98/91 179/99/92
+f 81/97/90 82/100/93 32/98/91
+f 29/40/37 84/101/94 85/38/35
+f 84/101/94 29/40/37 78/94/87
+f 13/20/20 87/102/95 86/13/13
+f 13/20/20 88/103/96 87/102/95
+f 86/13/13 87/102/95 89/104/97
+f 90/105/98 87/102/95 88/103/96
+f 94/90/83 72/92/85 89/104/97
+f 96/106/99 93/107/100 97/108/101
+f 93/107/100 96/106/99 90/109/98
+f 91/110/102 97/108/101 93/107/100
+f 99/91/84 94/90/83 100/111/103
+f 92/112/104 101/113/105 95/114/106
+f 92/112/104 103/115/107 101/113/105
+f 96/116/99 103/115/107 92/112/104
+f 104/117/108 103/118/107 96/106/99
+f 105/119/109 96/106/99 97/108/101
+f 105/119/109 97/108/101 98/120/110
+f 82/100/93 100/111/103 109/121/111
+f 100/111/103 101/113/105 102/122/112
+f 103/115/107 104/123/108 102/122/112
+f 102/122/112 106/124/113 110/125/61
+f 111/65/59 106/126/113 107/127/114
+f 37/46/43 32/98/91 82/100/93
+f 37/46/43 109/121/111 41/48/45
+f 114/128/115 115/37/34 118/129/116
+f 123/130/117 26/31/28 144/131/118
+f 120/132/119 91/110/102 112/133/120
+f 118/129/116 117/134/121 114/128/115
+f 98/120/110 97/108/101 91/110/102
+f 114/128/115 121/135/122 120/132/119
+f 118/129/116 122/136/123 117/134/121
+f 123/130/117 122/136/123 118/129/116
+f 128/137/124 144/131/118 149/138/125
+f 144/131/118 128/137/124 123/130/117
+f 105/119/109 98/120/110 129/139/126
+f 121/135/122 126/140/127 125/141/128
+f 122/136/123 126/140/127 121/135/122
+f 133/142/129 127/143/130 128/137/124
+f 128/137/124 127/143/130 122/136/123
+f 149/138/125 153/144/131 128/137/124
+f 125/141/128 131/145/132 124/146/133
+f 125/141/128 126/140/127 131/145/132
+f 136/147/134 126/140/127 132/148/135
+f 127/143/130 133/142/129 132/148/135
+f 130/149/136 108/150/137 129/139/126
+f 131/145/132 135/151/138 130/149/136
+f 138/76/69 131/145/132 136/147/134
+f 135/151/138 59/73/66 108/150/137
+f 59/73/66 135/151/138 137/72/65
+f 58/70/63 138/76/69 136/147/134
+f 18/152/21 141/153/139 140/33/30
+f 141/154/139 142/15/15 146/155/140
+f 18/21/21 142/15/15 141/154/139
+f 140/33/30 141/153/139 145/156/141
+f 1/7/7 147/157/142 143/16/16
+f 65/79/72 147/157/142 1/7/7
+f 151/158/143 148/159/144 146/155/140
+f 152/160/145 151/158/143 146/155/140
+f 147/157/142 152/160/145 146/155/140
+f 64/78/71 68/88/81 147/157/142
+f 153/144/131 149/138/125 154/161/146
+f 150/162/147 151/158/143 155/163/148
+f 155/163/148 151/158/143 152/160/145
+f 156/164/149 152/160/145 73/165/150
+f 68/88/81 73/165/150 152/160/145
+f 154/161/146 150/166/147 157/167/151
+f 157/168/151 155/163/148 158/169/152
+f 83/93/86 156/164/149 73/165/150
+f 157/168/151 158/169/152 43/54/51
+f 39/41/38 158/169/152 159/170/153
+f 29/40/37 159/170/153 83/93/86
+f 43/54/51 160/171/56 157/168/151
+f 63/4/4 70/172/154 66/82/75
+f 164/173/155 163/174/156 165/80/73
+f 169/175/157 166/176/158 171/177/159
+f 172/178/160 162/81/74 167/179/161
+f 167/179/161 66/82/75 173/180/162
+f 173/180/162 66/82/75 174/181/163
+f 161/84/77 174/181/163 66/82/75
+f 193/182/164 164/183/155 169/184/157
+f 170/185/165 171/186/159 194/187/166
+f 171/186/159 172/188/160 195/189/167
+f 195/189/167 172/188/160 167/190/161
+f 196/191/168 173/192/162 174/193/163
+f 175/194/169 174/193/163 192/195/170
+f 188/196/171 84/101/94 78/94/87
+f 80/95/88 190/197/172 191/96/89
+f 190/197/172 198/198/173 176/199/174
+f 198/198/173 190/197/172 177/200/175
+f 181/201/176 179/99/92 180/202/177
+f 179/99/92 183/203/178 180/202/177
+f 182/204/179 180/202/177 183/203/178
+f 184/205/180 185/206/181 201/207/182
+f 203/208/183 187/209/184 188/196/171
+f 184/205/180 201/207/182 190/197/172
+f 179/99/92 80/95/88 81/97/90
+f 79/87/80 188/196/171 78/94/87
+f 191/96/89 188/196/171 79/87/80
+f 186/210/185 184/205/180 85/38/35
+f 30/45/42 31/211/186 36/43/40
+f 184/205/180 34/39/36 85/38/35
+f 191/96/89 74/212/187 161/84/77
+f 163/213/156 192/214/170 174/215/163
+f 168/216/188 192/214/170 163/213/156
+f 195/217/167 194/218/166 171/219/159
+f 175/220/169 192/221/170 196/222/168
+f 168/223/188 193/224/164 194/225/166
+f 195/226/167 197/227/189 194/225/166
+f 197/227/189 192/221/170 194/225/166
+f 211/228/190 181/229/176 205/230/191
+f 212/231/192 180/232/177 182/233/179
+f 200/234/193 182/233/179 183/235/178
+f 185/236/181 186/237/185 202/238/194
+f 202/239/194 186/237/185 213/240/195
+f 213/240/195 187/241/184 214/242/196
+f 208/243/197 187/241/184 203/244/183
+f 214/242/196 187/241/184 208/243/197
+f 208/243/197 203/244/183 188/245/171
+f 209/246/198 188/245/171 189/247/199
+f 176/248/174 198/249/173 204/250/200
+f 198/249/173 210/251/201 204/250/200
+f 183/252/178 204/250/200 200/253/193
+f 201/254/182 206/255/202 207/256/203
+f 189/257/199 207/256/203 209/258/198
+f 189/257/199 201/254/182 207/256/203
+f 211/259/190 205/260/191 212/261/192
+f 200/262/193 211/259/190 212/261/192
+f 210/263/201 211/259/190 200/262/193
+f 213/264/195 214/265/196 206/266/202
+f 209/267/198 206/266/202 208/268/197
+f 207/269/203 206/266/202 209/267/198
+f 61/1/1 1/7/7 7/9/9
+f 2/2/2 62/77/70 60/3/3
+f 61/1/1 7/9/9 2/2/2
+f 62/77/70 2/2/2 3/5/5
+f 4/6/6 3/5/5 8/10/10
+f 5/11/11 63/4/4 4/6/6
+f 1/7/7 143/16/16 6/8/8
+f 8/10/10 9/12/12 4/6/6
+f 4/6/6 9/12/12 5/11/11
+f 11/17/17 2/2/2 7/9/9
+f 8/10/10 2/2/2 12/18/18
+f 2/2/2 11/17/17 12/18/18
+f 86/13/13 9/12/12 13/20/20
+f 10/14/14 142/15/15 18/21/21
+f 14/23/23 10/14/14 19/22/22
+f 14/23/23 11/17/17 10/14/14
+f 11/17/17 14/23/23 12/18/18
+f 16/24/24 15/19/19 12/18/18
+f 13/20/20 15/19/19 17/270/204
+f 17/270/204 88/103/96 13/20/20
+f 140/33/30 22/32/29 18/152/21
+f 19/27/22 18/152/21 22/32/29
+f 46/52/49 47/53/50 51/271/60 50/272/58
+f 20/28/26 15/273/19 16/29/24
+f 15/273/19 20/28/26 17/274/204
+f 21/36/33 88/275/96 17/274/204
+f 17/274/204 20/28/26 21/36/33
+f 26/31/28 27/34/31 22/32/29
+f 24/25/25 19/27/22 27/34/31
+f 113/276/205 25/277/206 23/30/27
+f 25/277/206 20/28/26 23/30/27
+f 26/31/28 116/278/207 27/34/31
+f 115/37/34 27/34/31 116/278/207
+f 115/37/34 23/30/27 24/25/25
+f 23/30/27 115/37/34 113/276/205
+f 113/276/205 28/35/32 25/277/206
+f 28/35/32 20/28/26 25/277/206
+f 40/51/48 184/205/180 30/45/42
+f 32/98/91 37/46/43 31/211/186
+f 33/42/39 184/205/180 40/51/48
+f 40/51/48 30/45/42 35/44/41
+f 31/211/186 37/46/43 36/43/40
+f 44/56/53 38/49/46 33/42/39
+f 45/50/47 44/56/53 33/42/39
+f 45/50/47 40/51/48 46/52/49
+f 47/53/50 36/43/40 42/47/44
+f 39/41/38 38/49/46 43/54/51
+f 48/55/52 38/49/46 44/56/53
+f 49/57/54 44/56/53 45/50/47
+f 50/272/58 49/57/54 45/50/47
+f 50/272/58 45/50/47 46/52/49
+f 137/72/65 58/70/63 55/63/57 50/64/58
+f 52/58/55 51/271/60 47/53/50
+f 42/47/44 52/58/55 47/53/50
+f 53/75/68 160/60/56 48/59/52
+f 14/26/23 24/25/25 23/30/27 16/29/24
+f 48/59/52 54/69/62 53/75/68
+f 70/172/154 63/4/4 5/11/11 67/279/208
+f 50/64/58 51/66/60 56/71/64
+f 53/75/68 57/74/67 139/280/209
+f 54/69/62 58/70/63 57/74/67
+f 1/7/7 61/1/1 65/79/72
+f 60/3/3 65/79/72 61/1/1
+f 166/176/158 165/80/73 60/3/3
+f 62/77/70 63/4/4 66/82/75
+f 82/100/93 81/97/90 76/281/210 99/91/84
+f 69/83/76 68/88/81 64/78/71
+f 165/80/73 163/174/156 74/212/187
+f 74/212/187 163/174/156 161/84/77
+f 70/172/154 71/85/78 66/82/75
+f 71/85/78 70/172/154 72/92/85
+f 67/279/208 72/92/85 70/172/154
+f 73/165/150 68/88/81 77/86/79
+f 79/87/80 69/83/76 74/212/187
+f 76/281/210 75/89/82 71/85/78
+f 72/92/85 76/281/210 71/85/78
+f 72/92/85 99/91/84 76/281/210
+f 77/86/79 83/93/86 73/165/150
+f 78/94/87 77/86/79 79/87/80
+f 81/97/90 80/95/88 75/89/82
+f 75/89/82 76/281/210 81/97/90
+f 93/107/100 21/36/33 28/35/32 91/110/102
+f 29/40/37 83/93/86 78/94/87
+f 31/211/186 30/45/42 179/99/92
+f 179/99/92 32/98/91 31/211/186
+f 86/13/13 67/279/208 5/11/11
+f 90/109/98 88/275/96 21/36/33
+f 89/104/97 72/92/85 67/279/208
+f 67/279/208 86/13/13 89/104/97
+f 21/36/33 93/107/100 90/109/98
+f 104/117/108 105/119/109 107/127/114 106/126/113
+f 95/114/106 94/90/83 89/104/97
+f 92/112/104 95/114/106 89/104/97
+f 89/104/97 87/102/95 92/112/104
+f 92/112/104 90/105/98 96/116/99
+f 87/102/95 90/105/98 92/112/104
+f 100/111/103 94/90/83 95/114/106
+f 100/111/103 95/114/106 101/113/105
+f 105/119/109 104/117/108 96/106/99
+f 82/100/93 99/91/84 100/111/103
+f 106/124/113 102/122/112 104/123/108
+f 103/115/107 102/122/112 101/113/105
+f 107/127/114 108/150/137 59/73/66 111/65/59
+f 108/150/137 107/127/114 105/119/109
+f 129/139/126 108/150/137 105/119/109
+f 37/46/43 82/100/93 109/121/111
+f 100/111/103 41/48/45 109/121/111
+f 102/122/112 41/48/45 100/111/103
+f 102/122/112 110/125/61 41/48/45
+f 111/65/59 110/68/61 106/126/113
+f 124/146/133 129/139/126 119/282/211 120/132/119
+f 110/125/61 52/58/55 41/48/45
+f 28/35/32 113/276/205 112/133/120
+f 114/128/115 112/133/120 113/276/205
+f 113/276/205 115/37/34 114/128/115
+f 118/129/116 115/37/34 116/278/207
+f 123/130/117 116/278/207 26/31/28
+f 28/35/32 112/133/120 91/110/102
+f 114/128/115 120/132/119 112/133/120
+f 116/278/207 123/130/117 118/129/116
+f 119/282/211 98/120/110 91/110/102
+f 91/110/102 120/132/119 119/282/211
+f 121/135/122 117/134/121 122/136/123
+f 114/128/115 117/134/121 121/135/122
+f 123/130/117 128/137/124 122/136/123
+f 98/120/110 119/282/211 129/139/126
+f 125/141/128 124/146/133 120/132/119 121/135/122
+f 145/156/141 144/131/118 26/31/28 140/33/30
+f 122/136/123 127/143/130 126/140/127
+f 153/144/131 133/142/129 128/137/124
+f 124/146/133 130/149/136 129/139/126
+f 124/146/133 131/145/132 130/149/136
+f 136/147/134 131/145/132 126/140/127
+f 126/140/127 127/143/130 132/148/135
+f 134/283/212 132/148/135 133/142/129
+f 133/142/129 153/144/131 134/283/212
+f 130/149/136 135/151/138 108/150/137
+f 135/151/138 131/145/132 138/76/69
+f 57/74/67 136/147/134 132/148/135
+f 139/280/209 57/74/67 132/148/135
+f 132/148/135 134/283/212 139/280/209
+f 137/72/65 135/151/138 138/76/69
+f 57/74/67 58/70/63 136/147/134
+f 146/155/140 142/15/15 143/16/16
+f 154/161/146 160/60/56 139/280/209 134/283/212
+f 143/16/16 147/157/142 146/155/140
+f 65/79/72 64/78/71 147/157/142
+f 144/131/118 145/156/141 149/138/125
+f 148/284/144 149/138/125 145/156/141
+f 145/156/141 141/153/139 148/284/144
+f 141/154/139 146/155/140 148/159/144
+f 147/157/142 68/88/81 152/160/145
+f 154/161/146 149/138/125 150/166/147
+f 149/138/125 148/284/144 150/166/147
+f 148/159/144 151/158/143 150/162/147
+f 156/164/149 155/163/148 152/160/145
+f 134/283/212 153/144/131 154/161/146
+f 157/168/151 150/162/147 155/163/148
+f 159/170/153 158/169/152 155/163/148
+f 155/163/148 156/164/149 159/170/153
+f 83/93/86 159/170/153 156/164/149
+f 60/3/3 62/77/70 162/81/74 166/176/158
+f 160/60/56 154/161/146 157/167/151
+f 39/41/38 43/54/51 158/169/152
+f 53/75/68 139/280/209 160/60/56
+f 29/40/37 39/41/38 159/170/153
+f 74/212/187 69/83/76 165/80/73
+f 167/190/161 173/192/162 196/191/168 197/285/189
+f 161/84/77 163/174/156 174/181/163
+f 169/175/157 164/173/155 165/80/73
+f 169/175/157 165/80/73 166/176/158
+f 171/177/159 166/176/158 162/81/74
+f 172/178/160 171/177/159 162/81/74
+f 167/179/161 162/81/74 66/82/75
+f 164/183/155 168/286/188 163/287/156
+f 193/182/164 168/288/188 164/183/155
+f 170/185/165 193/182/164 169/184/157
+f 170/185/165 169/184/157 171/186/159
+f 175/194/169 196/191/168 174/193/163
+f 190/197/172 201/207/182 191/96/89
+f 80/95/88 177/200/175 190/197/172
+f 179/99/92 176/199/174 183/203/178
+f 30/45/42 176/199/174 179/99/92
+f 30/45/42 190/197/172 176/199/174
+f 177/200/175 80/95/88 178/289/213
+f 80/95/88 179/99/92 178/289/213
+f 181/201/176 178/289/213 179/99/92
+f 185/206/181 184/205/180 186/210/185
+f 84/101/94 187/209/184 186/210/185
+f 84/101/94 188/196/171 187/209/184
+f 188/196/171 201/207/182 189/290/199
+f 186/210/185 85/38/35 84/101/94
+f 184/205/180 190/197/172 30/45/42
+f 201/207/182 188/196/171 191/96/89
+f 184/205/180 33/42/39 34/39/36
+f 75/89/82 191/96/89 161/84/77
+f 191/96/89 79/87/80 74/212/187
+f 197/291/189 195/292/167 167/293/161
+f 194/225/166 193/224/164 170/294/165
+f 192/221/170 168/223/188 194/225/166
+f 197/227/189 196/222/168 192/221/170
+f 211/228/190 178/295/213 181/229/176
+f 199/296/214 177/297/175 178/295/213
+f 180/232/177 205/230/191 181/229/176
+f 213/240/195 186/237/185 187/241/184
+f 177/298/175 199/299/214 210/251/201
+f 177/298/175 210/251/201 198/249/173
+f 178/300/213 211/301/190 199/302/214
+f 212/303/192 205/304/191 180/305/177
+f 212/306/192 182/307/179 200/308/193
+f 183/252/178 176/248/174 204/250/200
+f 185/309/181 206/255/202 201/254/182
+f 185/309/181 202/310/194 206/255/202
+f 208/311/197 188/312/171 209/313/198
+f 210/263/201 200/262/193 204/314/200
+f 210/263/201 199/315/214 211/259/190
+f 206/266/202 202/316/194 213/264/195
+f 214/265/196 208/268/197 206/266/202
+
+</script>
+
+<style>
+html {
+	color: white;
+	background-color: black;
+	font-family: Arial;
+	overflow: hidden;
+}
+body {
+	padding: 0;
+	margin: 0;
+}
+input[type=checkbox], label {
+	cursor: hand;
+}
+input[type=range] {
+	width: 100%;
+}
+input[type=button] {
+	width: 100%;
+	min-width: 9em;
+}
+#canvas {
+	display: block;
+	position: absolute;
+	top:  0;
+	left: 0;
+	width:  100%;
+	height: 100%;
+}
+#canvas-div {
+	position: relative;
+}
+.sel {
+	cursor: hand;
+}
+#controls-div {
+	vertical-align: top;
+	background-color: #333;
+	overflow: auto;
+}
+#controls {
+	padding: 1em;
+}
+.control-group {
+	position: relative;
+	max-width: 12em;
+}
+.control {
+	padding: 0.2em;
+}
+.control-x {
+	display: none;
+}
+#lightcontrol {
+	width:  12em;
+	height: 12em;
+	background-color: black;
+	outline: 1px solid white;
+	outline-offset: -1px;
+}
+#lightcontrol-label {
+	position: absolute;
+	top: 0.2em;
+	left: 0.2em;
+	pointer-events: none;
+}
+#shininess-label {
+	float: left;
+}
+.value {
+	float: right;
+	text-align: right;
+	width: 4em;
+}
+@media (orientation: landscape) {
+	#canvas-div {
+		display: inline-block;
+		width:  calc(100% - 14em);
+		height: 100%;
+	}
+	#controls-div {
+		display: inline-block;
+		width:   14em;
+		height: 100%;
+	}
+	.control-group {
+		overflow: hidden;
+	}
+	.control-group ~ .control-group {
+		margin-top: 1em;
+	}
+	#texture-img {
+		width: 100%;
+		height: auto;
+	}
+}
+@media (orientation: portrait) {
+	#canvas-div {
+		width:  100%;
+		height: calc(100% - 20em);
+	}
+	#controls-div {
+		width:  100%;
+		height: 20em;
+	}
+	.control-group {
+		display: inline-block;
+		vertical-align: top;
+	}
+	.control-group ~ .control-group {
+		margin-left: 2em;
+	}
+	#texture-img {
+		width: auto;
+		height: 5em;
+	}
+}
+</style>
+
+</head>
+<body onresize="WindowResize()">
+<div id="canvas-div"><canvas id="canvas"></canvas></div><div id="controls-div">
+<div id="controls">
+<div class="control-group"><canvas id="lightcontrol"></canvas><div id="lightcontrol-label">Light Direction</div></div>
+<div class="control-group">
+	<div class="control"><input type="button" value="Start Simulation" onclick="toggleSimulation(this)"></div>
+	
+	<div class="control"><input type="button" value="Reset" onclick="resetAll(); DrawScene();"></div>
+	
+	<div class="control"><span id="timestep-label">Time Step Size:</span><span class="value" id="timestep-value">20 ms</span><input id="timestep" type="range" min="1" max="100" value="20" oninput="SetTimeStepSize(this)" onchange="restartAllSimulations()" ondblclick="this.value=20;this.oninput();this.onchange()"/></div>
+	
+	<div class="control"><span id="gravity-label">Gravity:</span><span class="value" id="gravity-value">1</span><input id="gravity" type="range" min="0" max="100" value="20" oninput="SetGravity(this)" ondblclick="this.value=20;this.oninput()"/></div>
+	
+	<div class="control"><span id="mass-label">Mass:</span><span class="value" id="mass-value">1</span><input id="mass" type="range" min="1" max="100" value="20" oninput="SetMass(this)" ondblclick="this.value=20;this.oninput()"/></div>
+
+	<div class="control"><span id="stiffness-label">Stiffness:</span><span class="value" id="stiffness-value">1</span><input id="stiffness" type="range" min="0" max="100" value="20" oninput="SetStiffness(this)" ondblclick="this.value=20;this.oninput()"/></div>
+	
+	<div class="control"><span id="damping-label">Damping:</span><span class="value" id="damping-value">1.00</span><input id="damping" type="range" min="0" max="100" value="20" oninput="SetDamping(this)" ondblclick="this.value=20;this.oninput()"/></div>	
+</div>
+<div class="control-group">
+	<div class="control"><input id="show-box" name="show-box" type="checkbox" onchange="DrawScene()" checked /><label for="show-box"> Show Box</label></div>
+
+	<div class="control"><input id="show-texture" name="show-texture" type="checkbox" onchange="ShowTexture(this)" checked /><label for="show-texture"> Show Texture</label></div>
+	
+	<div class="control"><span id="shininess-label">Shininess:</span><span class="value" id="shininess-value">1</span><input id="shininess-exp" type="range" min="0" max="100" value="50" oninput="SetShininess(this)" ondblclick="this.value=50;this.oninput()"/></div>
+
+	<div class="control"><img id="texture-img" /></div>
+</div>
+</div>
+</div>
+</body>
+</html>
