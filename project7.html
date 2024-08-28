@@ -39,7 +39,7 @@ var MV, MVP;
 var primaryRT;
 var verticesArray = [];
 var offsetVertices = [];
-const maxBounceLimit = 16;
+const maxBounceLimit = 4;
 
 var lights = [
 	{
@@ -352,9 +352,9 @@ function MatrixInverse( m )
 		vec3 intensity;
 	};
 
+	uniform sampler2D u_texture;
 	uniform samplerCube u_skybox;
 	uniform bool u_useTexture; 
-	uniform sampler2D u_texture;
 	uniform Material mtl;
 	uniform Light light;
 	
@@ -362,7 +362,7 @@ function MatrixInverse( m )
 	varying vec3 v_viewSource;
 	varying vec2 v_texcoord;
 	
-	/*void main() {
+	void main() {
 		vec3 normal = normalize(v_normal);
 		vec3 view = normalize(-v_viewSource);
 		vec3 color = vec3(0,0,0);
@@ -371,27 +371,28 @@ function MatrixInverse( m )
 		if (c > 0.0) {
 			vec3 clr = c * mtl.k_d;
 			vec3 h = normalize(L + view);
-			float s = dot( normal, h );
-			if ( s > 0.0 ) {
-				clr += mtl.k_s * pow( s, mtl.n );
+			float s = dot(normal, h);
+			if (s > 0.0) {
+				clr += mtl.k_s * pow(s, mtl.n);
 			}
 			color += clr * light.intensity;
 		}
-		if ( mtl.k_s.r + mtl.k_s.g + mtl.k_s.b > 0.0 ) {
-			vec3 dir = reflect( -view, normal );
-			color += mtl.k_s * textureCube( u_skybox, dir.xzy ).rgb;
+		if (mtl.k_s.r + mtl.k_s.g + mtl.k_s.b > 0.0) {
+			vec3 dir = reflect(-view, normal);
+			color += mtl.k_s * textureCube(u_skybox, dir.xzy).rgb;
 		}
 	
-		gl_FragColor = vec4(color,1);
-	}*/
+		//if (u_useTexture) {
+		//	vec4 texColor = texture2D(u_texture, v_texcoord);
+		//	color = mix(color, texColor.rgb, 0.5); // Mix della texture con il colore e i riflessi
+		//}
 
-	void main() {
-		vec3 normal = normalize(v_normal);
-		vec3 view = normalize(-v_viewSource);
-		vec3 color = mtl.k_d; // Test con il colore diffusivo di base
-
-		gl_FragColor = vec4(color, 1.0); // Output del colore diffusivo
+		gl_FragColor = vec4(color, 1.0);
 	}
+	
+	
+	
+	
 	
 </script>
 
@@ -444,7 +445,7 @@ function MatrixInverse( m )
 	uniform int bounceLimit;
 
 
-	bool IntersectRay( inout HitInfo hit, Ray ray );
+	bool IntersectMesh( inout HitInfo hit, Ray ray );
 
 	bool IntersectMesh(inout HitInfo hit, Ray ray) {
 		hit.t = 1e30;
@@ -562,6 +563,7 @@ function MatrixInverse( m )
 			return vec4(clr, 1);
 		} else {
 			return vec4(textureCube(u_skybox, ray.dir.xzy).rgb, 1);
+			//return vec4(1,1,1,1);
 		}
 	}
 	
@@ -666,6 +668,7 @@ class MeshDrawer
 	}
 	showTexture( show )
 	{
+		console.log("u_useTexture:", show); // Verifica che il valore sia quello previsto
 		gl.useProgram(this.prog);
         gl.uniform1i(this.useTextureLoc, show);
 	}
@@ -678,9 +681,9 @@ class MeshDrawer
 	setMaterial(mtl) {
 		gl.useProgram(this.prog);
 		
-		console.log("k_d:", mtl.k_d);
-		console.log("k_s:", mtl.k_s);
-		console.log("n:", mtl.n);
+		// console.log("k_d:", mtl.k_d);
+		// console.log("k_s:", mtl.k_s);
+		// console.log("n:", mtl.n);
 		
 		gl.uniform3fv(gl.getUniformLocation(this.prog, 'mtl.k_d'), mtl.k_d);
 		gl.uniform3fv(gl.getUniformLocation(this.prog, 'mtl.k_s'), mtl.k_s);
