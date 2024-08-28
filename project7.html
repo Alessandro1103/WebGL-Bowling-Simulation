@@ -7,6 +7,25 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js"></script>
 <link rel="stylesheet" href="style.css">
 
+<script type="text/javascript">
+	document.addEventListener("keydown", keyDownTextField, false);
+	function keyDownTextField(e) {
+		var keyCode = e.keyCode;
+		if(keyCode==115) {	// F4
+			document.getElementById('includedscript').remove();
+			var head = document.getElementsByTagName('head')[0];
+			var script = document.createElement('script');
+			script.src= 'project6.js';
+			script.id = 'includedscript';
+			script.onload = function() {
+				primaryRT.init();
+				DrawScene();
+			}
+			head.appendChild(script);
+			console.log('New script loaded.');
+		}
+	}
+</script>
 
 <script id="initFunctions" type="text/javascript">
 ///////////////////////////////////////////////////////////////////////////////////
@@ -16,8 +35,18 @@
 var canvas, gl;
 var perspectiveMatrix;	
 var rotX=0, rotY=0, transY=0, transZ=40;
-var MV, MVP; // view matrices
+var MV, MVP;
 var primaryRT;
+var verticesArray = [];
+var offsetVertices = [];
+const maxBounceLimit = 16;
+
+var lights = [
+	{
+		position: [0, 0, 1000],
+		intensity: [1, 1, 1]
+	}
+]
 
 // Called once to initialize
 function InitWebGL() {
@@ -36,16 +65,15 @@ function InitWebGL() {
 
 	skybox = new Skybox();
 
-	primaryRT   = new PrimaryRayTracer;
-	secondaryRT = new SecondaryRayTracer;
+	primaryRT = new PrimaryRayTracer;
+
+	InitMassSprings();
 
     // Set the viewport size
     UpdateCanvasSize();
+	primaryRT.init();
 }
 
-
-
-// Called every time the window size is changed.
 function UpdateCanvasSize()
 {
 	canvas.style.width  = "100%";
@@ -63,6 +91,11 @@ function UpdateCanvasSize()
 
 function UpdateProjectionMatrix()
 {
+	if (primaryRT) {
+        primaryRT.updateProj();
+    } else {
+        console.error("RayTracer non è definito");
+    }
 	const fov = 60;
     var r = canvas.width / canvas.height;
     var n = (transZ - 10.0);  // Sposta il near plane più lontano per evitare il clipping vicino
@@ -80,7 +113,6 @@ function UpdateProjectionMatrix()
 	MV  = GetModelViewMatrix( 0, transY, transZ, rotX, rotY );
 	MVP = MatrixMult( perspectiveMatrix, MV );
 	primaryRT.updateProj();
-	secondaryRT.updateProj();
 }
 
 function getTrans() {
@@ -125,8 +157,8 @@ function InitMassSprings() {
     const initialZ = 100;    // Posizione iniziale della prima fila, spostata indietro rispetto alla palla
     const pinHeight = 0;     // Altezza dei birilli sopra il pavimento
 
-    let floor = new Floor('floor.obj', new Vec3(0, 0, -1));
     let bowlingBall = new Ball('ball.obj', new Vec3(initialX, pinHeight, initialZ - 300));
+    let floor = new Floor('floor.obj', new Vec3(0, 0, -1));
     let pin1 = new Pin('pin.obj', new Vec3(initialX, pinHeight, initialZ)); 
     let pin2 = new Pin('pin.obj', new Vec3(initialX - pinDistance, pinHeight, initialZ + rowDistance));
     let pin3 = new Pin('pin.obj', new Vec3(initialX + pinDistance, pinHeight, initialZ + rowDistance));
@@ -138,31 +170,7 @@ function InitMassSprings() {
     let pin9 = new Pin('pin.obj', new Vec3(initialX + pinDistance, pinHeight, initialZ + 3 * rowDistance));
     let pin10 = new Pin('pin.obj', new Vec3(initialX + 3 * pinDistance, pinHeight, initialZ + 3 * rowDistance));
 
-    // Configura i materiali per i birilli e la palla da bowling
-    let pinMaterialDiffuse = [1.0, 1.0, 1.0];
-    let pinMaterialSpecular = [0.5, 0.5, 0.5];
-    let pinShininess = 32.0;
-
-    pin1.setMaterial(pinMaterialDiffuse, pinMaterialSpecular, pinShininess);
-    pin2.setMaterial(pinMaterialDiffuse, pinMaterialSpecular, pinShininess);
-    pin3.setMaterial(pinMaterialDiffuse, pinMaterialSpecular, pinShininess);
-    pin4.setMaterial(pinMaterialDiffuse, pinMaterialSpecular, pinShininess);
-    pin5.setMaterial(pinMaterialDiffuse, pinMaterialSpecular, pinShininess);
-    pin6.setMaterial(pinMaterialDiffuse, pinMaterialSpecular, pinShininess);
-    pin7.setMaterial(pinMaterialDiffuse, pinMaterialSpecular, pinShininess);
-    pin8.setMaterial(pinMaterialDiffuse, pinMaterialSpecular, pinShininess);
-    pin9.setMaterial(pinMaterialDiffuse, pinMaterialSpecular, pinShininess);
-    pin10.setMaterial(pinMaterialDiffuse, pinMaterialSpecular, pinShininess);
-
-    let ballMaterialDiffuse = [0.0, 0.0, 0.8];
-    let ballMaterialSpecular = [1.0, 1.0, 1.0];
-    let ballShininess = 64.0;
-
-    bowlingBall.setMaterial(ballMaterialDiffuse, ballMaterialSpecular, ballShininess);
-
-    // Aggiungi tutti gli oggetti alla scena
     massSprings.push(floor);
-    massSprings.push(bowlingBall);
     massSprings.push(pin1);
     massSprings.push(pin2);
     massSprings.push(pin3);
@@ -173,13 +181,30 @@ function InitMassSprings() {
     massSprings.push(pin8);
     massSprings.push(pin9);
     massSprings.push(pin10);
+    massSprings.push(bowlingBall);
+
+    // Definisci i materiali
+    const floorMaterial = { k_d: [0.8, 0.8, 0.8], k_s: [0.5, 0.5, 0.5], n: 20.0 };
+    const ballMaterial = { k_d: [0.2, 0.2, 0.8], k_s: [1.0, 1.0, 1.0], n: 50.0 };
+    const pinMaterial = { k_d: [1.0, 1.0, 0.8], k_s: [1.0, 1.0, 1.0], n: 30.0 };
+	
+    for (let i = 0; i < massSprings.length; i++) {
+		if (massSprings[i] instanceof Ball) {
+			massSprings[i].meshDrawer.setMaterial(ballMaterial);
+		}
+		else if (massSprings[i] instanceof Pin) {
+			massSprings[i].meshDrawer.setMaterial(pinMaterial);
+		}
+		else if (massSprings[i] instanceof Floor) {
+			massSprings[i].meshDrawer.setMaterial(floorMaterial);
+		}
+		massSprings[i].meshDrawer.setLight(lights[0].position, lights[0].intensity);
+	}
 
     // Carica le texture per gli oggetti
     LoadTexturesForObjects(massSprings);
 }
 
-
-// This is a helper function for compiling the given vertex and fragment shader source code into a program.
 function InitShaderProgram( vsSource, fsSource, wgl=gl )
 {
 	const vs = CompileShader( wgl.VERTEX_SHADER,   vsSource, wgl );
@@ -327,6 +352,7 @@ function MatrixInverse( m )
 		vec3 intensity;
 	};
 
+	uniform samplerCube u_skybox;
 	uniform bool u_useTexture; 
 	uniform sampler2D u_texture;
 	uniform Material mtl;
@@ -336,51 +362,60 @@ function MatrixInverse( m )
 	varying vec3 v_viewSource;
 	varying vec2 v_texcoord;
 	
-	void main() {
+	/*void main() {
 		vec3 normal = normalize(v_normal);
 		vec3 view = normalize(-v_viewSource);
 		vec3 color = vec3(0,0,0);
-		vec3 lightDir = normalize( light.position - view );
-		float c = dot(normal, lightDir);
+		vec3 L = normalize( light.position - view );
+		float c = dot(normal, L);
 		if (c > 0.0) {
 			vec3 clr = c * mtl.k_d;
 			vec3 h = normalize(L + view);
-			float s = dot( nrm, h );
+			float s = dot( normal, h );
 			if ( s > 0.0 ) {
 				clr += mtl.k_s * pow( s, mtl.n );
 			}
 			color += clr * light.intensity;
 		}
 		if ( mtl.k_s.r + mtl.k_s.g + mtl.k_s.b > 0.0 ) {
-			vec3 dir = reflect( -view, nrm );
-			color += mtl.k_s * textureCube( envMap, dir.xzy ).rgb;
+			vec3 dir = reflect( -view, normal );
+			color += mtl.k_s * textureCube( u_skybox, dir.xzy ).rgb;
 		}
 	
-		vec4 color = u_useTexture ? texture2D(u_texture, v_texcoord) : vec4(ambient + diffuse + specular, 1.0);
-		gl_FragColor = color;
-	}	
-</script>
-
-<script id="meshContornoFS" type="x-shader/x-fragment">
-	precision mediump float;
-
-	uniform vec3 u_edgeColor;
-	varying vec3 v_normal;
+		gl_FragColor = vec4(color,1);
+	}*/
 
 	void main() {
-		float edge = 1.0 - dot(normalize(v_normal), vec3(0.0, 0.0, 1.0));
-		if (edge > 0.1) {
-			gl_FragColor = vec4(u_edgeColor, 1.0);
-		} else {
-			discard;
-		}
+		vec3 normal = normalize(v_normal);
+		vec3 view = normalize(-v_viewSource);
+		vec3 color = mtl.k_d; // Test con il colore diffusivo di base
+
+		gl_FragColor = vec4(color, 1.0); // Output del colore diffusivo
+	}
+	
+</script>
+
+<script id="raytraceVS" type="x-shader/x-vertex">
+	attribute vec3 p;
+	uniform mat4 proj;
+	uniform mat4 c2w;
+	varying vec3 ray_pos;
+	varying vec3 ray_dir;
+	void main()
+	{
+		gl_Position = proj * vec4(p,1);
+		vec4 rp = c2w * vec4(0,0,0,1);
+		ray_pos = rp.xyz;
+		vec4 rd = c2w * vec4(p,1);
+		ray_dir = rd.xyz - ray_pos;
 	}
 </script>
 
 <script id="raytraceFS" type="x-shader/x-fragment">
+	
 	struct Ray {
-	vec3 pos;
-	vec3 dir;
+		vec3 pos;
+		vec3 dir;
 	};
 
 	struct Material {
@@ -400,30 +435,52 @@ function MatrixInverse( m )
 		vec3     normal;
 		Material mtl;
 	};
+	
+	uniform samplerCube u_skybox;
+	uniform vec3 u_vertices [ NUM_VERTICES ];
+	uniform int u_offsetVertices [ NUM_OBJECTS ];
+	uniform Light lights [ NUM_LIGHTS ];
+	uniform Material materials [ NUM_OBJECTS ];
+	uniform int bounceLimit;
 
-	bool IntersectMesh(inout HitInfo hit, Ray ray, Mesh mesh) {
+
+	bool IntersectRay( inout HitInfo hit, Ray ray );
+
+	bool IntersectMesh(inout HitInfo hit, Ray ray) {
 		hit.t = 1e30;
+		int k = 0;
 		bool foundHit = false;
 		
-		// Loop through all triangles in the mesh
-		for (int i = 0; i < mesh.numTriangles; i++) {
-			Triangle tri = mesh.triangles[i];
-			vec3 v0 = tri.v0;
-			vec3 v1 = tri.v1;
-			vec3 v2 = tri.v2;
-	
-			// Use the Möller-Trumbore algorithm or another method for ray-triangle intersection
+		for (int i = 0; i < NUM_VERTICES; i += 3) {
+			
+			bool skip = false;
+			for (int j = 0; j < NUM_OBJECTS; j++) {
+				if (i == u_offsetVertices[j]) {
+					k = j;
+					skip = true;
+					break;
+				}
+			}
+			if (skip) {
+				continue;
+			}
+
+			vec3 v0 = u_vertices[i];
+			vec3 v1 = u_vertices[i + 1];
+			vec3 v2 = u_vertices[i + 2];
+
 			vec3 edge1 = v1 - v0;
 			vec3 edge2 = v2 - v0;
 			vec3 pvec = cross(ray.dir, edge2);
 			float det = dot(edge1, pvec);
 	
-			if (abs(det) < 0.0001) continue; // Ray is parallel to triangle
+			if (abs(det) < 0.0001) return false;
 	
 			float invDet = 1.0 / det;
 			vec3 tvec = ray.pos - v0;
 			float u = dot(tvec, pvec) * invDet;
-			if (u < 0.0 || u > 1.0) continue;
+
+			if (u < 0.0 || u > 1.0) return false;
 	
 			vec3 qvec = cross(tvec, edge1);
 			float v = dot(ray.dir, qvec) * invDet;
@@ -434,44 +491,77 @@ function MatrixInverse( m )
 				hit.t = t;
 				hit.position = ray.pos + t * ray.dir;
 				hit.normal = normalize(cross(edge1, edge2));
-				hit.mtl = mesh.material;
+				for (int j = 0; j < NUM_OBJECTS; j++) {
+					if (k == j) {
+						hit.mtl = materials[j];
+					}
+				}
 				foundHit = true;
 			}
 		}
 	
 		return foundHit;
 	}
+
+	vec3 Shade(Material mtl, vec3 position, vec3 normal, vec3 view) 
+	{
+		vec3 color = vec3(0,0,0);
 	
-	vec4 RayTracer(Ray ray, Mesh mesh) {
+		for (int i = 0; i < NUM_LIGHTS; ++i) {
+			vec3 lightDirection = normalize(lights[i].position - position);
+			vec3 halfVector = normalize(lightDirection + view);
+			float diffAng = max(0.0, dot(normal, lightDirection));
+			float specAng = max(0.0, dot(normal, halfVector));
+	
+			Ray shadowRay;
+			shadowRay.pos = position + normal * 0.00001;
+			shadowRay.dir = normalize(lights[i].position - shadowRay.pos);
+			HitInfo shadowHit;
+			bool inShadow = IntersectMesh(shadowHit, shadowRay) && shadowHit.t < length(lights[i].position - shadowRay.pos);
+	
+			if (!inShadow) {
+				vec3 diffuse = mtl.k_d * lights[i].intensity * diffAng;
+				vec3 specular = mtl.k_s * lights[i].intensity * pow(specAng, mtl.n);
+	
+				color += diffuse + specular;
+			}
+		}
+	
+		return color;
+	}
+	
+	
+	vec4 RayTracer(Ray ray) 
+	{
 		HitInfo hit;
-		if (IntersectMesh(hit, ray, mesh)) {
+		if (IntersectMesh(hit, ray)) {
 			vec3 view = normalize(-ray.dir);
 			vec3 clr = Shade(hit.mtl, hit.position, hit.normal, view);
-			
+
 			vec3 k_s = hit.mtl.k_s;
 			for (int bounce = 0; bounce < MAX_BOUNCES; ++bounce) {
 				if (bounce >= bounceLimit) break;
 				if (hit.mtl.k_s.r + hit.mtl.k_s.g + hit.mtl.k_s.b <= 0.0) break;
-				
-				Ray r;  // reflection ray
-				HitInfo h;  // reflection hit info
-				
+
+				Ray r;
+				HitInfo h;
+
 				r.pos = hit.position + hit.normal * 0.00001;
 				r.dir = reflect(ray.dir, hit.normal);
-				
-				if (IntersectMesh(h, r, mesh)) {
+
+				if (IntersectMesh(h, r)) {
 					clr += k_s * Shade(h.mtl, h.position, h.normal, normalize(-r.dir));
 					ray = r;
 					hit = h;
 					k_s *= hit.mtl.k_s;
 				} else {
-					clr += k_s * textureCube(envMap, r.dir.xzy).rgb;
-					break;  // no more reflections
+					clr += k_s * textureCube(u_skybox, r.dir.xzy).rgb;
+					break;
 				}
 			}
 			return vec4(clr, 1);
 		} else {
-			return vec4(textureCube(envMap, ray.dir.xzy).rgb, 1);
+			return vec4(textureCube(u_skybox, ray.dir.xzy).rgb, 1);
 		}
 	}
 	
@@ -483,14 +573,13 @@ function MatrixInverse( m )
 ///////////////////////////////////////////////////////////////////////////////////
 class MeshDrawer
 {
-	init()
+	constructor()
 	{
 		this.prog = InitShaderProgram( document.getElementById('meshVS').text, document.getElementById('meshFS').text);
         
 		this.mvp = gl.getUniformLocation(this.prog, 'u_mvp');
         this.matrixMVLoc = gl.getUniformLocation(this.prog, "u_mv");
         this.matrixNormalLoc = gl.getUniformLocation(this.prog, "u_mn");
-        this.lightDirectionLoc = gl.getUniformLocation(this.prog, "u_lightDirection");
 		this.useTextureLoc = gl.getUniformLocation(this.prog, 'u_useTexture');
 		this.textureLoc = gl.getUniformLocation(this.prog, 'u_texture');
 		this.mtl_k_d = gl.getUniformLocation( this.prog, 'mtl.k_d' );
@@ -507,35 +596,37 @@ class MeshDrawer
         this.normalBuffer = gl.createBuffer();
 		
         this.numTriangles = 0;
-
-		this.edgeProg = InitShaderProgram( document.getElementById('meshVS').text, document.getElementById('meshContornoFS').text );
-
-		this.edgeMvp = gl.getUniformLocation(this.edgeProg, 'u_mvp');
-        this.edgeMatrixMVLoc = gl.getUniformLocation(this.edgeProg, "u_mv");
-        this.edgeMatrixNormalLoc = gl.getUniformLocation(this.edgeProg, "u_mn");
-        this.edgeColorLoc = gl.getUniformLocation(this.edgeProg, "u_edgeColor");
-
 	}
-	setMesh( vertPos, texCoords, normals )
-	{
-		// [TO-DO] Update the contents of the vertex buffer objects.
+	setMesh(vertPos, texCoords, normals) {
+
+		verticesArray.push(vertPos);
+		offsetVertices.push(vertPos.length);
+		
+		if (!this.vertexBuffer) {
+			this.vertexBuffer = gl.createBuffer();
+		}
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertPos), gl.STATIC_DRAW);
+
+		if (!this.texelsBuffer) {
+			this.texelsBuffer = gl.createBuffer();
+		}
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.texelsBuffer);
+		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texCoords), gl.STATIC_DRAW);
+
+		if (!this.normalBuffer) {
+			this.normalBuffer = gl.createBuffer();
+		}
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.normalBuffer);
+		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
+		
 		this.numTriangles = vertPos.length / 3;
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertPos), gl.STATIC_DRAW);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.texelsBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texCoords), gl.STATIC_DRAW);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.normalBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
 	}
 	draw( matrixMVP, matrixMV, matrixNormal )
 	{
 		gl.useProgram(this.prog);
 
         gl.uniformMatrix4fv(this.mvp, false, matrixMVP);
-        gl.uniformMatrix4fv(this.yzSwapLoc, false, this.yzSwapMat);
         gl.uniformMatrix4fv(this.matrixMVLoc, false, matrixMV);
         gl.uniformMatrix3fv(this.matrixNormalLoc, false, matrixNormal);
 
@@ -554,28 +645,8 @@ class MeshDrawer
         gl.enableVertexAttribArray(this.normalLocation);
         gl.vertexAttribPointer(this.normalLocation, 3, gl.FLOAT, false, 0, 0);
 
-        gl.drawArrays(gl.TRIANGLES, 0, this.numTriangles);
+        gl.drawArrays(gl.TRIANGLES, 0, this.numTriangles * 3);
 	}
-	drawEdges(matrixMVP, matrixMV, matrixNormal) {
-
-        gl.useProgram(this.edgeProg);
-
-        gl.uniformMatrix4fv(this.edgeMvp, false, matrixMVP);
-        gl.uniformMatrix4fv(this.edgeMatrixMVLoc, false, matrixMV);
-        gl.uniformMatrix3fv(this.edgeMatrixNormalLoc, false, matrixNormal);
-        gl.uniform3f(this.edgeColorLoc, 0.0, 0.0, 0.0); // Colore del contorno nero
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
-        gl.enableVertexAttribArray(this.vertPos);
-        gl.vertexAttribPointer(this.vertPos, 3, gl.FLOAT, false, 0, 0);
-
-        gl.drawArrays(gl.LINE_STRIP, 0, this.numTriangles);
-    }
-    drawWithEdges(matrixMVP, matrixMV, matrixNormal) { 
-
-		this.draw(matrixMVP, matrixMV, matrixNormal); 
-		this.drawEdges(matrixMVP, matrixMV, matrixNormal);
-    }
 	setTexture( img )
 	{   
         if (!this.texture) {
@@ -598,46 +669,141 @@ class MeshDrawer
 		gl.useProgram(this.prog);
         gl.uniform1i(this.useTextureLoc, show);
 	}
-	setLightDir( x, y, z )
+	setLight( pos, intens )
 	{
 		gl.useProgram(this.prog);
-        gl.uniform3fv(this.lightDirectionLoc, [x, y, z]);
+		gl.uniform3fv( gl.getUniformLocation( this.prog, 'light.position'  ), pos    );
+		gl.uniform3fv( gl.getUniformLocation( this.prog, 'light.intensity' ), intens );
 	}
-	setMaterial(v, mtl) {
-        gl.useProgram(this.prog);
-        gl.uniform3fv(gl.getUniformLocation(this.prog, 'u_materialDiffuse'), mtl.k_d);
-        gl.uniform3fv(gl.getUniformLocation(this.prog, 'u_materialSpecular'), mtl.k_s);
-        gl.uniform1f(gl.getUniformLocation(this.prog, 'u_materialSpecularN'), mtl.n);
-    }
-	setShininess( shininess )
-	{
+	setMaterial(mtl) {
 		gl.useProgram(this.prog);
-        gl.uniform1f(this.shininessLoc, shininess);
+		
+		console.log("k_d:", mtl.k_d);
+		console.log("k_s:", mtl.k_s);
+		console.log("n:", mtl.n);
+		
+		gl.uniform3fv(gl.getUniformLocation(this.prog, 'mtl.k_d'), mtl.k_d);
+		gl.uniform3fv(gl.getUniformLocation(this.prog, 'mtl.k_s'), mtl.k_s);
+		gl.uniform1f(gl.getUniformLocation(this.prog, 'mtl.n'), mtl.n);
 	}
+
 }
+
+</script>
+
+<script id="rayTrace" type="text/javascript">
+
+	const raytraceFS_header = `
+		precision highp float;
+		precision highp int;
+		
+	`;
+
+	const raytraceFS_primary = `
+
+		varying vec3 ray_pos;
+		varying vec3 ray_dir;
+
+		void main()
+		{
+			Ray primary_ray;
+			primary_ray.pos = ray_pos;
+			primary_ray.dir = ray_dir;
+			gl_FragColor = RayTracer( primary_ray );
+		}
+
+	`;
+
+	class RayTracer
+	{
+		constructor()
+		{
+			this.bounceLimit = 5;
+		}
+		initProg( vs, fs )
+		{
+			if ( this.prog ) gl.deleteProgram( this.prog );
+
+			const raytraceFS = document.getElementById('raytraceFS').textContent;
+
+			const raytraceFS_head = raytraceFS_header + `
+				#define NUM_OBJECTS ` + massSprings.length + `
+				#define NUM_LIGHTS  ` + lights.length + `
+				#define NUM_VERTICES ` + verticesArray.length + `
+				#define MAX_BOUNCES ` + maxBounceLimit + `
+			`;
+			this.prog = InitShaderProgram( vs, raytraceFS_head+raytraceFS+fs );
+			if ( ! this.prog ) return;
+
+			gl.useProgram( this.prog );
+
+			gl.uniform1i( gl.getUniformLocation( this.prog, 'bounceLimit' ), this.bounceLimit );
+			gl.uniform3fv(gl.getUniformLocation(this.prog, 'u_vertices'), new Float32Array(verticesArray.flat()));
+			gl.uniform1iv( gl.getUniformLocation( this.prog , 'u_offsetVertices'), offsetVertices);
+			
+			for ( var i=0; i<lights.length; ++i ) {
+				gl.uniform3fv( gl.getUniformLocation( this.prog, 'lights['+i+'].position'  ), lights[i].position  );
+				gl.uniform3fv( gl.getUniformLocation( this.prog, 'lights['+i+'].intensity' ), lights[i].intensity );
+			}
+			this.updateProj();
+		}
+		updateProj()
+		{
+			if ( ! this.prog ) return;
+			if (!this.prog) {
+				console.error("Shader program non è stato inizializzato correttamente");
+				return;
+			}
+			gl.useProgram( this.prog );
+			var proj = gl.getUniformLocation( this.prog, 'proj' );
+			gl.uniformMatrix4fv( proj, false, perspectiveMatrix );
+		}
+		setBounceLimit( bounceLimit )
+		{
+			this.bounceLimit = bounceLimit;
+			if ( ! this.prog ) return;
+			gl.useProgram( this.prog );
+			gl.uniform1i( gl.getUniformLocation( this.prog, 'bounceLimit' ), this.bounceLimit );
+		}
+	};
+
+	class PrimaryRayTracer extends RayTracer
+	{
+		init()
+		{
+			// console.log(raytraceFS_primary);
+			this.initProg( document.getElementById('raytraceVS').text, raytraceFS_primary );
+		}
+		draw( trans )
+		{
+			if ( ! this.prog ) return;
+			screenQuad.draw( this.prog, trans );
+		}
+	}
+
 </script>
 
 <script  id="SkyVS" type="x-shader/x-vertex">
 	attribute vec4 a_position;
 	varying vec4 v_position;
 	void main() {
-	v_position = a_position;
-	gl_Position = a_position;
-	gl_Position.z = 1.0;
+		v_position = a_position;
+		gl_Position = a_position;
+		gl_Position.z = 1.0;
 	}
 </script>
 
 <script  id="SkyFS" type="x-shader/x-fragment">
-precision mediump float;
+	precision mediump float;
 
-uniform samplerCube u_skybox;
-uniform mat4 u_viewDirectionProjectionInverse;
+	uniform samplerCube u_skybox;
+	uniform mat4 u_viewDirectionProjectionInverse;
 
-varying vec4 v_position;
-void main() {
-  vec4 t = u_viewDirectionProjectionInverse * v_position;
-  gl_FragColor = textureCube(u_skybox, normalize(t.xyz / t.w));
-}
+	varying vec4 v_position;
+	void main() {
+	vec4 t = u_viewDirectionProjectionInverse * v_position;
+	gl_FragColor = textureCube(u_skybox, normalize(t.xyz / t.w));
+	}
 </script>
 
 <script id="background" type="text/javascript">
@@ -909,7 +1075,6 @@ class MassSpring {
 		for ( var i=0; i<this.nrm.length; ++i ) this.nrm[i].normalize();
 		updateBuffer( this.buffers.normalBuffer, this.mesh.nfac, this.nrm );
 
-		// Update the mesh drawer and redraw scene
 		this.meshDrawer.setMesh( this.buffers.positionBuffer, this.buffers.texCoordBuffer, this.buffers.normalBuffer );
 
 		DrawScene();
@@ -936,7 +1101,7 @@ class MassSpring {
 				if (detectAABBCollision(cBoundingBox, otherBoundingBox)) {
 					flagCollision = true;
 					boundingBoxes.push(otherBoundingBox);  // Aggiungi la bounding box rilevata
-					console.log(this, massSprings[i]);
+					// console.log(this, massSprings[i]);
 				}
 			}
 		}
@@ -951,14 +1116,6 @@ class MassSpring {
 
 		// Aggiorna la mesh
 		this.updateMesh();
-		this.renderScene();
-	}
-
-	renderScene() {
-		for (let i = 0; i < massSprings.length; i++) {
-			let object = massSprings[i];
-			object.drawWithEdges(matrixMVP, matrixMV, matrixNormal);
-		}
 	}
 
 
@@ -1094,7 +1251,7 @@ class Floor extends MassSpring {
     constructor(objdef, initialPosition) {
         super(objdef, initialPosition);
 		this.gravity = new Vec3( 0, -2, 0 );
-        this.mass = 0.2; // Valore diverso per differenziare
+        this.mass = 0.2;
         this.stiffness = 1;
         this.damping = 1;
         this.restitution = 0.8;
@@ -1103,11 +1260,6 @@ class Floor extends MassSpring {
 	// Sovrascrivi il metodo simTimeStep per non fare nulla
 	simTimeStep() {
 		// Non fare nulla per il pavimento
-    }
-
-    // Sovrascrivi il metodo mouseDown per impedire l'interazione
-    mouseDown() {
-        return false; // Non consentire la selezione del pavimento
     }
 }
 
@@ -1140,7 +1292,6 @@ function detectAABBCollision(boxA, boxB) {
 
 window.onload = function() {
 	InitWebGL();
-	InitMassSprings();
 
 	canvas.zoom = function( s ) {
 		transZ *= s/canvas.height + 1;
@@ -1229,7 +1380,6 @@ window.onload = function() {
 	SetMass     ( document.getElementById('mass') );
 	SetStiffness( document.getElementById('stiffness') );
 	SetDamping  ( document.getElementById('damping') );
-	SetShininess( document.getElementById('shininess-exp') );
 
 	DrawScene();
 };
@@ -1269,7 +1419,6 @@ function LoadTexturesForObjects(objects) {
             DrawScene();
         };
 
-        // Associa la texture in base al tipo di oggetto
         if (object instanceof Floor) {
 			img.src = 'Textures/floorTEX.png';
         } else if (object instanceof Ball) {
@@ -1291,7 +1440,6 @@ function SetTimeStepSize(param)
 function SetGravity(param) {
     var v = param.value;
     var s = v / 20;
-	console.log(s);
     document.getElementById('gravity-value').innerText = s.toFixed(2);
     for (let i = 0; i < massSprings.length; i++) {
         massSprings[i].gravity.y = (-s);
@@ -1301,7 +1449,7 @@ function SetGravity(param) {
 function SetMass(param) {
     var v = param.value;
     var s = v / 200;
-    console.log(s);
+    // console.log(s);
 	document.getElementById('mass-value').innerText = s.toFixed(3);
 
     // Loop through all massSprings and set the mass for each
@@ -1313,7 +1461,6 @@ function SetMass(param) {
 function SetStiffness(param) {
     var v = param.value;
     var s = v / 20;
-	console.log(s);
     document.getElementById('stiffness-value').innerText = s.toFixed(2);
 
     // Loop through all massSprings and set the stiffness for each
@@ -1325,25 +1472,13 @@ function SetStiffness(param) {
 function SetDamping(param) {
     var v = param.value;
     var s = v / 20;
-	console.log(s);
+	// console.log(s);
     document.getElementById('damping-value').innerText = s.toFixed(2);
 
     // Loop through all massSprings and set the damping for each
     for (let i = 0; i < massSprings.length; i++) {
         massSprings[i].damping = s;
     }
-}
-
-function SetShininess(param) {
-    var exp = param.value;
-    var s = Math.pow(10, exp / 25);
-    document.getElementById('shininess-value').innerText = s.toFixed(s < 10 ? 2 : 0);
-	
-	for (let i = 0; i < massSprings.length; i++) {
-		massSprings[i].meshDrawer.setShininess(s);
-	}
-    
-    DrawScene();
 }
 
 function toggleSimulation(button) {
@@ -1371,7 +1506,6 @@ function restartAllSimulations() {
 
 function NewScene() {
 	primaryRT.init();
-	secondaryRT.init();
 	DrawScene();
 }
 
@@ -3477,8 +3611,6 @@ f 6/11/6 5/10/6 1/1/6 2/13/6
 
 	<div class="control"><input id="show-texture" name="show-texture" type="checkbox" onchange="ShowTexture(this)" /><label for="show-texture"> Show Texture</label></div>
 	
-	<div class="control"><span id="shininess-label">Shininess:</span><span class="value" id="shininess-value">1</span><input id="shininess-exp" type="range" min="0" max="100" value="50" oninput="SetShininess(this)" ondblclick="this.value=50;this.oninput()"/></div>
-
 	<div class="control"><img id="texture-img" /></div>
 </div>
 </div>
