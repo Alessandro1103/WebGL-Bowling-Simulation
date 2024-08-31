@@ -50,6 +50,19 @@ input[type=button] {
 .control-x {
 	display: none;
 }
+#lightcontrol {
+	width:  12em;
+	height: 12em;
+	background-color: black;
+	outline: 1px solid white;
+	outline-offset: -1px;
+}
+#lightcontrol-label {
+	position: absolute;
+	top: 0.2em;
+	left: 0.2em;
+	pointer-events: none;
+}
 #shininess-label {
 	float: left;
 }

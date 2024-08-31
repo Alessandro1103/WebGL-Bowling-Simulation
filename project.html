@@ -2,30 +2,10 @@
 <html>
 <head>
 <title>Final project</title>
-<script type="text/javascript" id="includedscript" src="project7.js"></script>
+<script type="text/javascript" id="includedscript" src="project.js"></script>
 <script type="text/javascript" src="obj.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js"></script>
 <link rel="stylesheet" href="style.css">
-
-<script type="text/javascript">
-	document.addEventListener("keydown", keyDownTextField, false);
-	function keyDownTextField(e) {
-		var keyCode = e.keyCode;
-		if(keyCode==115) {	// F4
-			document.getElementById('includedscript').remove();
-			var head = document.getElementsByTagName('head')[0];
-			var script = document.createElement('script');
-			script.src= 'project6.js';
-			script.id = 'includedscript';
-			script.onload = function() {
-				// primaryRT.init();
-				DrawScene();
-			}
-			head.appendChild(script);
-			console.log('New script loaded.');
-		}
-	}
-</script>
 
 <script id="initFunctions" type="text/javascript">
 ///////////////////////////////////////////////////////////////////////////////////
@@ -36,21 +16,12 @@ var canvas, gl;
 var perspectiveMatrix;	
 var rotX=0, rotY=0, transY=0, transZ=40;
 var MV, MVP;
-var primaryRT;
 var verticesArray = [];
 var offsetVertices = [];
-const maxBounceLimit = 4;
 
-var lights = [
-	{
-		position: [0, 0, 1000],
-		intensity: [1, 1, 1]
-	}
-]
 
 // Called once to initialize
 function InitWebGL() {
-    // Initialize the WebGL canvas
     canvas = document.getElementById("canvas");
     canvas.oncontextmenu = function() { return false; };
     gl = canvas.getContext("webgl", { antialias: false, depth: true }); // Initialize the GL context
@@ -59,19 +30,14 @@ function InitWebGL() {
         return;
     }
 
-    // Initialize settings
     gl.clearColor(0, 0, 0, 0);
     gl.enable(gl.DEPTH_TEST);
 
 	skybox = new Skybox();
 
-	// primaryRT = new PrimaryRayTracer;
-
 	InitMassSprings();
 
-    // Set the viewport size
     UpdateCanvasSize();
-	// primaryRT.init();
 }
 
 function UpdateCanvasSize()
@@ -91,11 +57,7 @@ function UpdateCanvasSize()
 
 function UpdateProjectionMatrix()
 {
-	if (primaryRT) {
-        primaryRT.updateProj();
-    } else {
-        console.error("RayTracer non è definito");
-    }
+
 	const fov = 60;
     var r = canvas.width / canvas.height;
     var n = (transZ - 10.0);  // Sposta il near plane più lontano per evitare il clipping vicino
@@ -112,7 +74,6 @@ function UpdateProjectionMatrix()
     ];	
 	MV  = GetModelViewMatrix( 0, transY, transZ, rotX, rotY );
 	MVP = MatrixMult( perspectiveMatrix, MV );
-	// primaryRT.updateProj();
 }
 
 function getTrans() {
@@ -187,19 +148,6 @@ function InitMassSprings() {
     const floorMaterial = { k_d: [0.8, 0.8, 0.8], k_s: [0.5, 0.5, 0.5], n: 20.0 };
     const ballMaterial = { k_d: [0.2, 0.2, 0.8], k_s: [1.0, 1.0, 1.0], n: 50.0 };
     const pinMaterial = { k_d: [1.0, 1.0, 0.8], k_s: [1.0, 1.0, 1.0], n: 30.0 };
-	
-    for (let i = 0; i < massSprings.length; i++) {
-		if (massSprings[i] instanceof Ball) {
-			massSprings[i].meshDrawer.setMaterial(ballMaterial);
-		}
-		else if (massSprings[i] instanceof Pin) {
-			massSprings[i].meshDrawer.setMaterial(pinMaterial);
-		}
-		else if (massSprings[i] instanceof Floor) {
-			massSprings[i].meshDrawer.setMaterial(floorMaterial);
-		}
-		massSprings[i].meshDrawer.setLight(lights[0].position, lights[0].intensity);
-	}
 
     // Carica le texture per gli oggetti
     LoadTexturesForObjects(massSprings);
@@ -325,14 +273,16 @@ function MatrixInverse( m )
 	uniform mat4 u_mvp;
 	uniform mat4 u_mv;
 	uniform mat3 u_mn;
+
+	uniform vec3 u_lightDirection;
 	
 	varying vec2 v_texcoord;
 	varying vec3 v_normal;
-	varying vec3 v_viewSource;
+	varying vec4 v_viewSource;
 	
 	void main() {
 		gl_Position = u_mvp * a_pos;
-		v_viewSource = (u_mv * a_pos).xyz;
+		v_viewSource = u_mv * a_pos;
 		v_texcoord = a_texCoord;
 		v_normal = normalize(u_mn * a_normal);
 	}	
@@ -340,227 +290,40 @@ function MatrixInverse( m )
 
 <script id="meshFS" type="x-shader/x-fragment">
 	precision mediump float;
-
-	struct Material {
-		vec3  k_d;	// diffuse coefficient
-		vec3  k_s;	// specular coefficient
-		float n;	// specular exponent
-	};
-
-	struct Light {
-		vec3 position;
-		vec3 intensity;
-	};
-
-	uniform sampler2D u_texture;
-	uniform samplerCube u_skybox;
+			
 	uniform bool u_useTexture; 
-	uniform Material mtl;
-	uniform Light light;
+	uniform sampler2D u_texture;
+	uniform vec3 u_lightDirection;
+	uniform float u_shininess;
 	
-	varying vec3 v_normal;
-	varying vec3 v_viewSource;
+	varying vec4 v_viewSource;
+	varying vec3 v_normal;	 
 	varying vec2 v_texcoord;
 	
 	void main() {
 		vec3 normal = normalize(v_normal);
-		vec3 view = normalize(-v_viewSource);
-		vec3 color = vec3(0,0,0);
-		vec3 L = normalize( light.position - view );
-		float c = dot(normal, L);
-		if (c > 0.0) {
-			vec3 clr = c * mtl.k_d;
-			vec3 h = normalize(L + view);
-			float s = dot(normal, h);
-			if (s > 0.0) {
-				clr += mtl.k_s * pow(s, mtl.n);
-			}
-			color += clr * light.intensity;
-		}
-		if (mtl.k_s.r + mtl.k_s.g + mtl.k_s.b > 0.0) {
-			vec3 dir = reflect(-view, normal);
-			color += mtl.k_s * textureCube(u_skybox, dir.xzy).rgb;
-		}
-		gl_FragColor = vec4(color, 1.0);
-	}
-	
-	
-	
-	
-	
-</script>
 
-<script id="raytraceVS" type="x-shader/x-vertex">
-	attribute vec3 p;
-	uniform mat4 proj;
-	uniform mat4 c2w;
-	varying vec3 ray_pos;
-	varying vec3 ray_dir;
-	void main()
-	{
-		gl_Position = proj * vec4(p,1);
-		vec4 rp = c2w * vec4(0,0,0,1);
-		ray_pos = rp.xyz;
-		vec4 rd = c2w * vec4(p,1);
-		ray_dir = rd.xyz - ray_pos;
-	}
-</script>
+		u_useTexture ?  gl_FragColor = texture2D(u_texture, v_texcoord) : gl_FragColor = vec4(0.2, 1, 0.2, 1);
 
-<script id="raytraceFS" type="x-shader/x-fragment">
-	
-	struct Ray {
-		vec3 pos;
-		vec3 dir;
-	};
+		vec3 lightColor = vec3(1.0, 1.0, 1.0);
 
-	struct Material {
-		vec3  k_d;	// diffuse coefficient
-		vec3  k_s;	// specular coefficient
-		float n;	// specular exponent
-	};
-
-	struct Light {
-		vec3 position;
-		vec3 intensity;
-	};
-	
-	struct HitInfo {
-		float    t;
-		vec3     position;
-		vec3     normal;
-		Material mtl;
-	};
-	
-	uniform samplerCube u_skybox;
-	uniform vec3 u_vertices [ NUM_VERTICES ];
-	uniform int u_offsetVertices [ NUM_OBJECTS ];
-	uniform Light lights [ NUM_LIGHTS ];
-	uniform Material materials [ NUM_OBJECTS ];
-	uniform int bounceLimit;
-
-
-	bool IntersectMesh( inout HitInfo hit, Ray ray );
-
-	bool IntersectMesh(inout HitInfo hit, Ray ray) {
-		hit.t = 1e30;
-		int k = 0;
-		bool foundHit = false;
+		vec3 lightSource = u_lightDirection;
+		float diffuse = dot(lightSource, normal);
 		
-		for (int i = 0; i < NUM_VERTICES; i += 3) {
-			
-			bool skip = false;
-			for (int j = 0; j < NUM_OBJECTS; j++) {
-				if (i == u_offsetVertices[j]) {
-					k = j;
-					skip = true;
-					break;
-				}
-			}
-			if (skip) {
-				continue;
-			}
-
-			vec3 v0 = u_vertices[i];
-			vec3 v1 = u_vertices[i + 1];
-			vec3 v2 = u_vertices[i + 2];
-
-			vec3 edge1 = v1 - v0;
-			vec3 edge2 = v2 - v0;
-			vec3 pvec = cross(ray.dir, edge2);
-			float det = dot(edge1, pvec);
-	
-			if (abs(det) < 0.0001) return false;
-	
-			float invDet = 1.0 / det;
-			vec3 tvec = ray.pos - v0;
-			float u = dot(tvec, pvec) * invDet;
-
-			if (u < 0.0 || u > 1.0) return false;
-	
-			vec3 qvec = cross(tvec, edge1);
-			float v = dot(ray.dir, qvec) * invDet;
-			if (v < 0.0 || u + v > 1.0) continue;
-	
-			float t = dot(edge2, qvec) * invDet;
-			if (t > 0.0001 && t < hit.t) {
-				hit.t = t;
-				hit.position = ray.pos + t * ray.dir;
-				hit.normal = normalize(cross(edge1, edge2));
-				for (int j = 0; j < NUM_OBJECTS; j++) {
-					if (k == j) {
-						hit.mtl = materials[j];
-					}
-				}
-				foundHit = true;
-			}
+		vec3 viewSourceN = normalize(v_viewSource.xyz);
+		vec3 halfVector = normalize(-lightSource + viewSourceN);
+		
+		float specular = 0.0;
+		if (diffuse > 0.0) {
+			specular = pow(dot(normal, halfVector), u_shininess);
 		}
-	
-		return foundHit;
-	}
 
-	vec3 Shade(Material mtl, vec3 position, vec3 normal, vec3 view) 
-	{
-		vec3 color = vec3(0,0,0);
-	
-		for (int i = 0; i < NUM_LIGHTS; ++i) {
-			vec3 lightDirection = normalize(lights[i].position - position);
-			vec3 halfVector = normalize(lightDirection + view);
-			float diffAng = max(0.0, dot(normal, lightDirection));
-			float specAng = max(0.0, dot(normal, halfVector));
-	
-			Ray shadowRay;
-			shadowRay.pos = position + normal * 0.00001;
-			shadowRay.dir = normalize(lights[i].position - shadowRay.pos);
-			HitInfo shadowHit;
-			bool inShadow = IntersectMesh(shadowHit, shadowRay) && shadowHit.t < length(lights[i].position - shadowRay.pos);
-	
-			if (!inShadow) {
-				vec3 diffuse = mtl.k_d * lights[i].intensity * diffAng;
-				vec3 specular = mtl.k_s * lights[i].intensity * pow(specAng, mtl.n);
-	
-				color += diffuse + specular;
-			}
-		}
-	
-		return color;
-	}
-	
-	
-	vec4 RayTracer(Ray ray) 
-	{
-		HitInfo hit;
-		if (IntersectMesh(hit, ray)) {
-			vec3 view = normalize(-ray.dir);
-			vec3 clr = Shade(hit.mtl, hit.position, hit.normal, view);
-
-			vec3 k_s = hit.mtl.k_s;
-			for (int bounce = 0; bounce < MAX_BOUNCES; ++bounce) {
-				if (bounce >= bounceLimit) break;
-				if (hit.mtl.k_s.r + hit.mtl.k_s.g + hit.mtl.k_s.b <= 0.0) break;
-
-				Ray r;
-				HitInfo h;
-
-				r.pos = hit.position + hit.normal * 0.00001;
-				r.dir = reflect(ray.dir, hit.normal);
-
-				if (IntersectMesh(h, r)) {
-					clr += k_s * Shade(h.mtl, h.position, h.normal, normalize(-r.dir));
-					ray = r;
-					hit = h;
-					k_s *= hit.mtl.k_s;
-				} else {
-					clr += k_s * textureCube(u_skybox, r.dir.xzy).rgb;
-					break;
-				}
-			}
-			return vec4(clr, 1);
-		} else {
-			return vec4(textureCube(u_skybox, ray.dir.xzy).rgb, 1);
-		}
+		gl_FragColor.rgb *= diffuse;
+		gl_FragColor.rgb += specular;
 	}
 	
 </script>
+
 
 <script id="meshDrawer" type="text/javascript">
 ///////////////////////////////////////////////////////////////////////////////////
@@ -575,17 +338,16 @@ class MeshDrawer
 		this.mvp = gl.getUniformLocation(this.prog, 'u_mvp');
         this.matrixMVLoc = gl.getUniformLocation(this.prog, "u_mv");
         this.matrixNormalLoc = gl.getUniformLocation(this.prog, "u_mn");
+		this.shininessLoc = gl.getUniformLocation(this.prog, "u_shininess");
+		this.lightDirectionLoc = gl.getUniformLocation(this.prog, "u_lightDirection");
 		this.useTextureLoc = gl.getUniformLocation(this.prog, 'u_useTexture');
 		this.textureLoc = gl.getUniformLocation(this.prog, 'u_texture');
-		this.mtl_k_d = gl.getUniformLocation( this.prog, 'mtl.k_d' );
-		this.mtl_k_s = gl.getUniformLocation( this.prog, 'mtl.k_s' );
-		this.mtl_n   = gl.getUniformLocation( this.prog, 'mtl.n' );
 		
         this.vertPos = gl.getAttribLocation(this.prog, 'a_pos');
         this.texPos = gl.getAttribLocation(this.prog, 'a_texCoord');
         this.normalLocation = gl.getAttribLocation(this.prog, "a_normal");
 		
-		this.texture = null;
+		this.texture = gl.createTexture();
         this.vertexBuffer = gl.createBuffer();
         this.texelsBuffer = gl.createBuffer();
         this.normalBuffer = gl.createBuffer();
@@ -665,117 +427,17 @@ class MeshDrawer
 		gl.useProgram(this.prog);
         gl.uniform1i(this.useTextureLoc, show);
 	}
-	setLight( pos, intens )
-	{
-		gl.useProgram(this.prog);
-		gl.uniform3fv( gl.getUniformLocation( this.prog, 'light.position'  ), pos    );
-		gl.uniform3fv( gl.getUniformLocation( this.prog, 'light.intensity' ), intens );
-	}
-	setMaterial(mtl) {
-		gl.useProgram(this.prog);
-		
-		// console.log("k_d:", mtl.k_d);
-		// console.log("k_s:", mtl.k_s);
-		// console.log("n:", mtl.n);
-		
-		gl.uniform3fv(gl.getUniformLocation(this.prog, 'mtl.k_d'), mtl.k_d);
-		gl.uniform3fv(gl.getUniformLocation(this.prog, 'mtl.k_s'), mtl.k_s);
-		gl.uniform1f(gl.getUniformLocation(this.prog, 'mtl.n'), mtl.n);
-	}
-
+    setLightDir(x, y, z) {
+        // [TO-DO] set the uniform parameter(s) of the fragment shader to specify the light direction.
+        gl.useProgram(this.prog);
+        gl.uniform3fv(this.lightDirectionLoc, [x, y, z]);
+    }
+    setShininess(shininess) {
+        // [TO-DO] set the uniform parameter(s) of the fragment shader to specify the shininess.
+        gl.useProgram(this.prog);
+        gl.uniform1f(this.shininessLoc, shininess);
+    }
 }
-
-</script>
-
-<script id="rayTrace" type="text/javascript">
-
-	const raytraceFS_header = `
-		precision highp float;
-		precision highp int;
-		
-	`;
-
-	const raytraceFS_primary = `
-
-		varying vec3 ray_pos;
-		varying vec3 ray_dir;
-
-		void main()
-		{
-			Ray primary_ray;
-			primary_ray.pos = ray_pos;
-			primary_ray.dir = ray_dir;
-			gl_FragColor = RayTracer( primary_ray );
-		}
-
-	`;
-
-	class RayTracer
-	{
-		constructor()
-		{
-			this.bounceLimit = 5;
-		}
-		initProg( vs, fs )
-		{
-			if ( this.prog ) gl.deleteProgram( this.prog );
-
-			const raytraceFS = document.getElementById('raytraceFS').textContent;
-
-			const raytraceFS_head = raytraceFS_header + `
-				#define NUM_OBJECTS ` + massSprings.length + `
-				#define NUM_LIGHTS  ` + lights.length + `
-				#define NUM_VERTICES ` + verticesArray.length + `
-				#define MAX_BOUNCES ` + maxBounceLimit + `
-			`;
-			this.prog = InitShaderProgram( vs, raytraceFS_head+raytraceFS+fs );
-			if ( ! this.prog ) return;
-
-			gl.useProgram( this.prog );
-
-			gl.uniform1i( gl.getUniformLocation( this.prog, 'bounceLimit' ), this.bounceLimit );
-			gl.uniform3fv(gl.getUniformLocation(this.prog, 'u_vertices'), new Float32Array(verticesArray.flat()));
-			gl.uniform1iv( gl.getUniformLocation( this.prog , 'u_offsetVertices'), offsetVertices);
-			
-			for ( var i=0; i<lights.length; ++i ) {
-				gl.uniform3fv( gl.getUniformLocation( this.prog, 'lights['+i+'].position'  ), lights[i].position  );
-				gl.uniform3fv( gl.getUniformLocation( this.prog, 'lights['+i+'].intensity' ), lights[i].intensity );
-			}
-			this.updateProj();
-		}
-		updateProj()
-		{
-			if ( ! this.prog ) return;
-			if (!this.prog) {
-				console.error("Shader program non è stato inizializzato correttamente");
-				return;
-			}
-			gl.useProgram( this.prog );
-			var proj = gl.getUniformLocation( this.prog, 'proj' );
-			gl.uniformMatrix4fv( proj, false, perspectiveMatrix );
-		}
-		setBounceLimit( bounceLimit )
-		{
-			this.bounceLimit = bounceLimit;
-			if ( ! this.prog ) return;
-			gl.useProgram( this.prog );
-			gl.uniform1i( gl.getUniformLocation( this.prog, 'bounceLimit' ), this.bounceLimit );
-		}
-	};
-
-	class PrimaryRayTracer extends RayTracer
-	{
-		init()
-		{
-			// console.log(raytraceFS_primary);
-			this.initProg( document.getElementById('raytraceVS').text, raytraceFS_primary );
-		}
-		draw( trans )
-		{
-			if ( ! this.prog ) return;
-			screenQuad.draw( this.prog, trans );
-		}
-	}
 
 </script>
 
@@ -1263,6 +925,192 @@ class Floor extends MassSpring {
 ///////////////////////////////////////////////////////////////////////////////////
 </script>
 
+<script type="text/javascript">
+	///////////////////////////////////////////////////////////////////////////////////
+	// Below is the light view control code
+	///////////////////////////////////////////////////////////////////////////////////
+	
+	var lightView;
+	
+	class LightView
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("lightcontrol");
+			this.canvas.oncontextmenu = function() {return false;};
+			this.gl = this.canvas.getContext("webgl", {antialias: false, depth: true});	// Initialize the GL context
+			if (!this.gl) {
+				alert("Unable to initialize WebGL. Your browser or machine may not support it.");
+				return;
+			}
+			
+			// Initialize settings
+			this.gl.clearColor(0.33,0.33,0.33,0);
+			this.gl.enable(gl.DEPTH_TEST);
+			
+			this.rotX = 0;
+			this.rotY = 0;
+			this.posZ = 5;
+			
+			this.resCircle = 32;
+			this.resArrow = 16;
+			this.buffer = this.gl.createBuffer();
+			var data = [];
+			for ( var i=0; i<=this.resCircle; ++i ) {
+				var a = 2 * Math.PI * i / this.resCircle;
+				var x = Math.cos(a);
+				var y = Math.sin(a);
+				data.push( x * .9 );
+				data.push( y * .9 );
+				data.push( 0 );
+				data.push( x );
+				data.push( y );
+				data.push( 0 );
+			}
+			for ( var i=0; i<=this.resCircle; ++i ) {
+				var a = 2 * Math.PI * i / this.resCircle;
+				var x = Math.cos(a);
+				var y = Math.sin(a);
+				data.push( x );
+				data.push( y );
+				data.push( -.05 );
+				data.push( x );
+				data.push( y );
+				data.push( 0.05 );
+			}
+			for ( var i=0; i<=this.resArrow; ++i ) {
+				var a = 2 * Math.PI * i / this.resArrow;
+				var x = Math.cos(a) * .07;
+				var y = Math.sin(a) * .07;
+				data.push( x );
+				data.push( y );
+				data.push( -1 );
+				data.push( x );
+				data.push( y );
+				data.push( 0 );
+			}
+			data.push( 0 );
+			data.push( 0 );
+			data.push( -1.2 );
+			for ( var i=0; i<=this.resArrow; ++i ) {
+				var a = 2 * Math.PI * i / this.resArrow;
+				var x = Math.cos(a) * .15;
+				var y = Math.sin(a) * .15;
+				data.push( x );
+				data.push( y );
+				data.push( -0.9 );
+			}
+			this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.buffer);
+			this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(data), this.gl.STATIC_DRAW);
+			
+			// Set the viewport size
+			this.canvas.style.width  = "";
+			this.canvas.style.height = "";
+			const pixelRatio = window.devicePixelRatio || 1;
+			this.canvas.width  = pixelRatio * this.canvas.clientWidth;
+			this.canvas.height = pixelRatio * this.canvas.clientHeight;
+			const width  = (this.canvas.width  / pixelRatio);
+			const height = (this.canvas.height / pixelRatio);
+			this.canvas.style.width  = width  + 'px';
+			this.canvas.style.height = height + 'px';
+			this.gl.viewport( 0, 0, this.canvas.width, this.canvas.height );
+			UpdateProjectionMatrix();
+			this.proj = perspectiveMatrix;
+			
+			// Compile the shader program
+			this.prog = InitShaderProgram( lightViewVS, lightViewFS, this.gl );
+			this.mvp = this.gl.getUniformLocation( this.prog, 'mvp' );
+			this.clr1 = this.gl.getUniformLocation( this.prog, 'clr1' );
+			this.clr2 = this.gl.getUniformLocation( this.prog, 'clr2' );
+			this.vertPos = this.gl.getAttribLocation( this.prog, 'pos' );
+			
+			this.draw();
+			this.updateLightDir();
+			
+			this.canvas.onmousedown = function() {
+				var cx = event.clientX;
+				var cy = event.clientY;
+				lightView.canvas.onmousemove = function() {
+					lightView.rotY += (cx - event.clientX)/lightView.canvas.width*5;
+					lightView.rotX += (cy - event.clientY)/lightView.canvas.height*5;
+					cx = event.clientX;
+					cy = event.clientY;
+					lightView.draw();
+					lightView.updateLightDir();
+				}
+			}
+			this.canvas.onmouseup = this.canvas.onmouseleave = function() {
+				lightView.canvas.onmousemove = null;
+			}
+		}
+		
+		updateLightDir()
+		{
+			var cy = Math.cos( this.rotY );
+			var sy = Math.sin( this.rotY );
+			var cx = Math.cos( this.rotX );
+			var sx = Math.sin( this.rotX );
+			for (var i=0; i<massSprings.length; ++i){ 
+				massSprings[i].meshDrawer.setLightDir( -sy, cy*sx, -cy*cx );
+			}
+			DrawScene();
+		}
+		
+		draw()
+		{
+			// Clear the screen and the depth buffer.
+			this.gl.clear( this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT );
+			
+			this.gl.bindBuffer( this.gl.ARRAY_BUFFER, this.buffer );
+			this.gl.vertexAttribPointer( this.vertPos, 3, this.gl.FLOAT, false, 0, 0 );
+			this.gl.enableVertexAttribArray( this.buffer );
+	
+			this.gl.useProgram( this.prog );
+			var mvp = MatrixMult( this.proj, [ 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,this.posZ,1 ] );
+			this.gl.uniformMatrix4fv( this.mvp, false, mvp );
+			this.gl.uniform3f( this.clr1, 0.6,0.6,0.6 );
+			this.gl.uniform3f( this.clr2, 0,0,0 );
+			this.gl.drawArrays( this.gl.TRIANGLE_STRIP, 0, this.resCircle*2+2 );
+	
+			var mv  = GetModelViewMatrix( 0, 0, this.posZ, this.rotX, this.rotY );
+			var mvp = MatrixMult( this.proj, mv );
+			this.gl.uniformMatrix4fv( this.mvp, false, mvp );
+			this.gl.uniform3f( this.clr1, 1,1,1 );
+			this.gl.drawArrays( this.gl.TRIANGLE_STRIP, 0, this.resCircle*2+2 );
+			this.gl.drawArrays( this.gl.TRIANGLE_STRIP, this.resCircle*2+2, this.resCircle*2+2 );
+			this.gl.uniform3f( this.clr1, 0,0,0 );
+			this.gl.uniform3f( this.clr2, 1,1,1 );
+			this.gl.drawArrays( this.gl.TRIANGLE_STRIP, this.resCircle*4+4, this.resArrow*2+2 );
+			this.gl.drawArrays( this.gl.TRIANGLE_FAN, this.resCircle*4+4 + this.resArrow*2+2, this.resArrow+2 );
+		}
+	}
+	
+	// Vertex shader source code
+	const lightViewVS = `
+		attribute vec3 pos;
+		uniform mat4 mvp;
+		void main()
+		{
+			gl_Position = mvp * vec4(pos,1);
+		}
+	`;
+	// Fragment shader source code
+	var lightViewFS = `
+		precision mediump float;
+		uniform vec3 clr1;
+		uniform vec3 clr2;
+		void main()
+		{
+			gl_FragColor = gl_FrontFacing ? vec4(clr1,1) : vec4(clr2,1);
+		}
+	`;
+	
+	
+	
+	///////////////////////////////////////////////////////////////////////////////////
+</script>
+	
+
 <script id="collision" type="text/javascript">
 ///////////////////////////////////////////////////////////////////////////////////
 // Collision
@@ -1288,6 +1136,7 @@ function detectAABBCollision(boxA, boxB) {
 
 window.onload = function() {
 	InitWebGL();
+	lightview = new LightView();
 
 	canvas.zoom = function( s ) {
 		transZ *= s/canvas.height + 1;
@@ -1376,6 +1225,8 @@ window.onload = function() {
 	SetMass     ( document.getElementById('mass') );
 	SetStiffness( document.getElementById('stiffness') );
 	SetDamping  ( document.getElementById('damping') );
+
+	SetShininess( document.getElementById('shininess-exp') );
 
 	DrawScene();
 };
@@ -1477,6 +1328,17 @@ function SetDamping(param) {
     }
 }
 
+function SetShininess( param )
+{
+	var exp = param.value;
+	var s = Math.pow(10,exp/25);
+	document.getElementById('shininess-value').innerText = s.toFixed( s < 10 ? 2 : 0 );
+	for (let i = 0; i < massSprings.length; i++) {
+		massSprings[i].meshDrawer.setShininess(s);
+	}
+	DrawScene();
+}
+
 function toggleSimulation(button) {
     for (let i = 0; i < massSprings.length; i++) {
         if (massSprings[i].isSimulationRunning()) {
@@ -1501,7 +1363,6 @@ function restartAllSimulations() {
 }
 
 function NewScene() {
-	// primaryRT.init();
 	DrawScene();
 }
 
@@ -3589,8 +3450,9 @@ f 6/11/6 5/10/6 1/1/6 2/13/6
 <div id="canvas-div"><canvas id="canvas"></canvas></div><div id="controls-div">
 <div id="controls">
 <div class="control-group">
+	<canvas id="lightcontrol"></canvas><div id="lightcontrol-label">Light Direction</div></div>
+<div class="control-group">
 	<div class="control"><input type="button" value="Start Simulation" onclick="toggleSimulation(this)"></div>
-	
 	<div class="control"><input type="button" value="Reset" onclick="resetAll(); DrawScene();"></div>
 	
 	<div class="control"><span id="timestep-label">Time Step Size:</span><span class="value" id="timestep-value">20 ms</span><input id="timestep" type="range" min="1" max="100" value="20" oninput="SetTimeStepSize(this)" onchange="restartAllSimulations()" ondblclick="this.value=20;this.oninput();this.onchange()"/></div>
@@ -3604,6 +3466,7 @@ f 6/11/6 5/10/6 1/1/6 2/13/6
 	<div class="control"><span id="damping-label">Damping:</span><span class="value" id="damping-value">1.00</span><input id="damping" type="range" min="0" max="100" value="20" oninput="SetDamping(this)" ondblclick="this.value=20;this.oninput()"/></div>	
 </div>
 <div class="control-group">
+	<div class="control"><span id="shininess-label">Shininess:</span><span class="value" id="shininess-value">1</span><input id="shininess-exp" type="range" min="0" max="100" value="50" oninput="SetShininess(this)" ondblclick="this.value=50;this.oninput()"/></div>
 
 	<div class="control"><input id="show-texture" name="show-texture" type="checkbox" onchange="ShowTexture(this)" checked /><label for="show-texture"> Show Texture</label></div>
 	
