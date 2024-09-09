@@ -64,7 +64,7 @@ function UpdateProjectionMatrix()
     const min_n = 0.001;
     if ( n < min_n ) n = min_n;
     var f = (transZ + 1000.0); // Sposta il far plane molto più lontano per includere oggetti distanti
-    var ff = 3.145 * fov / 180;
+    var ff = 3.145 * fov / 180;  // Da gradi in radianti
     var s = 1 / Math.tan( ff/2 );
     perspectiveMatrix = [
         s/r, 0, 0, 0,
@@ -144,12 +144,12 @@ function InitMassSprings() {
     massSprings.push(pin10);
     massSprings.push(bowlingBall);
 
-    // Definisci i materiali
+    // Materiali
     const floorMaterial = { k_d: [0.8, 0.8, 0.8], k_s: [0.5, 0.5, 0.5], n: 20.0 };
     const ballMaterial = { k_d: [0.2, 0.2, 0.8], k_s: [1.0, 1.0, 1.0], n: 50.0 };
     const pinMaterial = { k_d: [1.0, 1.0, 0.8], k_s: [1.0, 1.0, 1.0], n: 30.0 };
 
-    // Carica le texture per gli oggetti
+    // Texture per gli oggetti
     LoadTexturesForObjects(massSprings);
 }
 
@@ -423,7 +423,7 @@ class MeshDrawer
 	}
 	showTexture( show )
 	{
-		console.log("u_useTexture:", show); // Verifica che il valore sia quello previsto
+		console.log("u_useTexture:", show);
 		gl.useProgram(this.prog);
         gl.uniform1i(this.useTextureLoc, show);
 	}
@@ -737,8 +737,7 @@ class MassSpring {
 
 		DrawScene();
 	}
-
-		simTimeStep() {
+	simTimeStep() {
 		let flagCollision = false;
 		let boundingBoxes = [];
 
@@ -764,15 +763,17 @@ class MassSpring {
 			}
 		}
 
+		if (flagCollision && this instanceof Ball) {
+			this.gravity.y = 0;
+		}
+
 		SimTimeStep(dt, this.pos, this.vel, this.springs, this.stiffness, damping, this.mass, this.gravity, this.restitution, flagCollision, boundingBoxes);
 
-		// Assicurati che il vertice selezionato non cambi posizione
 		if (p) {
 			this.holdVert.set(p);
 			this.vel[this.selVert].init(0, 0, 0);
 		}
 
-		// Aggiorna la mesh
 		this.updateMesh();
 	}
 
@@ -915,10 +916,9 @@ class Floor extends MassSpring {
         this.restitution = 0.8;
     }
 
-	// Sovrascrivi il metodo simTimeStep per non fare nulla
 	simTimeStep() {
-		// Non fare nulla per il pavimento
-    }
+		// il pavimento non si muove
+	}
 }
 
 

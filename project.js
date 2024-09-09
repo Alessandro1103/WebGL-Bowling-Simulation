@@ -32,12 +32,8 @@ function GetModelViewMatrix( translationX, translationY, translationZ, rotationX
 function SimTimeStep(dt, positions, velocities, springs, stiffness, damping, particleMass, gravity, restitution, flagcollision, boundingBoxes) {
     
     var forces = new Array(positions.length);
-    for (var i = 0; i < forces.length; ++i)
-        forces[i] = new Vec3(0, 0, 0);
+    for (var i = 0; i < forces.length; ++i) forces[i] = new Vec3(0, 0, 0);
 
-    // Calcolo della forza totale su ciascuna particella
-
-    // Gravità
     for (var i = 0; i < positions.length; i++) {
         forces[i] = forces[i].add(gravity.mul(particleMass));
     }
@@ -76,51 +72,59 @@ function SimTimeStep(dt, positions, velocities, springs, stiffness, damping, par
 
     }
 
-    // Gestione delle collisioni con altri oggetti
     if (flagcollision) {
 
         for (let b = 0; b < boundingBoxes.length; b++) {
             let boxB = boundingBoxes[b];
             for (let i = 0; i < positions.length; i++) {
-                // Verifica se la particella è all'interno della bounding box di boxB
+
                 if (positions[i].x >= boxB.min.x && positions[i].x <= boxB.max.x &&
                     positions[i].y >= boxB.min.y && positions[i].y <= boxB.max.y &&
                     positions[i].z >= boxB.min.z && positions[i].z <= boxB.max.z) {
-                    
-                    // Calcolo della quantità di moto iniziale
+                        
                     let initialMomentum = velocities[i].mul(particleMass);
-                    
-                    // Asse X
-                    if (positions[i].x > boxB.max.x) {
-                        positions[i].x = boxB.max.x + 0.001;
-                    } else if (positions[i].x < boxB.min.x) {
-                        positions[i].x = boxB.min.x - 0.001;
-                    }
-                    velocities[i].x *= -restitution;
 
-                    // Asse Y
-                    if (positions[i].y > boxB.max.y) {
-                        positions[i].y = boxB.max.y + 0.001;
-                    } else if (positions[i].y < boxB.min.y) {
-                        positions[i].y = boxB.min.y - 0.001;
-                    }
-                    velocities[i].y *= -restitution;
-
-                    // Asse Z
-                    if (positions[i].z > boxB.max.z) {
-                        positions[i].z = boxB.max.z + 0.001;
-                    } else if (positions[i].z < boxB.min.z) {
-                        positions[i].z = boxB.min.z - 0.001;
-                    }
-                    velocities[i].z *= -restitution;
+                    let distToMinX = positions[i].x - boxB.min.x;
+                    let distToMaxX = boxB.max.x - positions[i].x;
+                
+                    let distToMinY = positions[i].y - boxB.min.y;
+                    let distToMaxY = boxB.max.y - positions[i].y;
+                
+                    let distToMinZ = positions[i].z - boxB.min.z;
+                    let distToMaxZ = boxB.max.z - positions[i].z;
+                
+                    // Asse minore da dove è avvenuta la collisione
+                    let minDistX = Math.min(distToMinX, distToMaxX);
+                    let minDistY = Math.min(distToMinY, distToMaxY);
+                    let minDistZ = Math.min(distToMinZ, distToMaxZ);
+                
+                    if (minDistX <= minDistY && minDistX <= minDistZ) {
+                        if (distToMinX < distToMaxX) {
+                            positions[i].x = boxB.min.x - 0.001;
+                        } else {
+                            positions[i].x = boxB.max.x + 0.001;
+                        }
+                        velocities[i].x *= -restitution;
+                    } else if (minDistY <= minDistX && minDistY <= minDistZ) {
+                        if (distToMinY < distToMaxY) {
+                            positions[i].y = boxB.min.y - 0.001;
+                        } else {
+                            positions[i].y = boxB.max.y + 0.001;
+                        }
+                        velocities[i].y *= -restitution;
+                    } else {
+                        if (distToMinZ < distToMaxZ) {
+                            positions[i].z = boxB.min.z - 0.001;
+                        } else {
+                            positions[i].z = boxB.max.z + 0.001;
+                        }
+                        velocities[i].z *= -restitution;
+                    }                
                     
-                    // Calcolo della quantità di moto finale
                     let finalMomentum = velocities[i].mul(particleMass);
 
-                    // Aggiornamento delle forze in base all'impulso
                     let impulse = finalMomentum.sub(initialMomentum);
 
-                    // Smorzamento sull'impulso
                     let dampingFactor = 0.85; 
                     impulse = impulse.mul(dampingFactor);
 
@@ -130,7 +134,6 @@ function SimTimeStep(dt, positions, velocities, springs, stiffness, damping, par
         }
     }
     
-    // Aggiornamento di posizioni e velocità
     for (var i = 0; i < positions.length; i++) {
         let acc = forces[i].div(particleMass);
         velocities[i] = velocities[i].add(acc.mul(dt));
