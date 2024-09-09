@@ -121,7 +121,7 @@ function SimTimeStep(dt, positions, velocities, springs, stiffness, damping, par
                     let impulse = finalMomentum.sub(initialMomentum);
 
                     // Smorzamento sull'impulso
-                    let dampingFactor = 0.85; // Un valore tra 0.7 e 0.9 può essere adatto
+                    let dampingFactor = 0.85; 
                     impulse = impulse.mul(dampingFactor);
 
                     forces[i] = forces[i].add(impulse.div(dt));
