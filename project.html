@@ -1550,7 +1550,7 @@ function startPlay() {
     };
 
     keydownListenerSimulate = (e) => {
-        if (e.key === ' ' && !isPlaying) {  // Avvia la simulazione solo una volta
+        if (e.key === 'ArrowUp' && !isPlaying && !isBallMoving) {  // Avvia la simulazione solo una volta
             isPlaying = true;
             isBallMoving = true;
 
