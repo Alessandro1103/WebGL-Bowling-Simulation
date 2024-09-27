@@ -71,6 +71,56 @@ input[type=button] {
 	text-align: right;
 	width: 4em;
 }
+
+/* barra di tiro */
+#powerIndicator {
+    position: absolute;
+    top: 50px;
+    left: 50px;
+    font-family: Arial, sans-serif;
+}
+
+#powerBarContainer {
+    border: 1px solid black;
+}
+
+#powerBar {
+    transition: background-color 0.2s ease-in-out;
+}
+
+/* Frecce laterali */
+.arrow-left, .arrow-right {
+    display: none; /* Le frecce saranno nascoste all'inizio */
+    position: absolute;
+    width: 0;
+    height: 0;
+    border-top: 25px solid transparent;  /* Punta superiore della freccia trasparente */
+    border-bottom: 25px solid transparent; /* Punta inferiore della freccia trasparente */
+}
+
+.arrow-left {
+    border-right: 50px solid red;  /* Colore della freccia sinistra */
+}
+
+.arrow-right {
+    border-left: 50px solid red;  /* Colore della freccia destra */
+}
+
+/* Media query per ottimizzazione responsive */
+@media (orientation: landscape) {
+    .arrow-left, .arrow-right {
+        top: 50%;  /* Posiziona verticalmente al centro */
+        transform: translateY(-50%);
+    }
+}
+
+@media (orientation: portrait) {
+    .arrow-left, .arrow-right {
+        top: calc(50% - 25px);  /* Centra verticalmente per schermi più stretti */
+    }
+}
+
+
 @media (orientation: landscape) {
 	#canvas-div {
 		display: inline-block;

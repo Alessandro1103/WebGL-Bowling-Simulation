@@ -956,7 +956,7 @@ class Pin extends MassSpring {
 class Ball extends MassSpring {
     constructor(objdef, initialPosition) {
         super(objdef, initialPosition);
-		this.gravity = new Vec3( 0, -2, 1 );
+		this.gravity = new Vec3( 0, -2, 0 );
         this.mass = 0.2;
         this.stiffness = 1;
         this.damping = 1;
@@ -1511,57 +1511,224 @@ function stopPlay() {
     document.removeEventListener('keydown', keydownListenerSimulate);
 }
 
+// Oggetto che incapsula la logica della barra di potenza
+const PowerBar = {
+    isRunning: false,
+    direction: 1, // Indica se la barra sta andando su (+1) o giù (-1)
+    value: 0, // Rappresenta la posizione della barra (0 a 100)
+    interval: null, // Riferimento all'intervallo di aggiornamento
+    strength: 0, // Valore finale della potenza
+    currentColor: 'green', // Colore corrente della barra
+    
+    // Inizia la barra di potenza
+    start: function() {
+        const powerIndicator = document.getElementById('powerIndicator');
+        const powerBar = document.getElementById('powerBar');
+        this.isRunning = true;
+
+        // Mostra la barra
+        powerIndicator.style.display = 'block';
+
+        // Intervallo per far muovere la barra su e giù
+		this.interval = setInterval(() => {
+			if (this.value >= 100) {
+				this.direction = -1;
+			} else if (this.value <= 0) {
+				this.direction = 1;
+			}
+
+			// Aggiorna il valore della barra
+			this.value += this.direction * 2;
+
+			// Cambia il colore in base al valore
+			if (this.value > 80) {
+				powerBar.style.backgroundColor = 'red';
+				this.currentColor = 'red';
+			} else if (this.value < 30) {
+				powerBar.style.backgroundColor = 'green';
+				this.currentColor = 'green';
+			} else {
+				powerBar.style.backgroundColor = 'yellow';
+				this.currentColor = 'yellow';
+			}
+
+			// Aggiorna l'altezza della barra per riflettere il valore corrente
+			powerBar.style.height = this.value + '%';
+		}, 50);
+    },
+
+    // Ferma la barra e determina la forza del tiro
+    stop: function() {
+        clearInterval(this.interval);
+        this.isRunning = false;
+        return this.value;
+    },
+
+    // Nasconde la barra di potenza dopo il tiro
+    hide: function() {
+        document.getElementById('powerIndicator').style.display = 'none';
+    }
+};
+
+
+const Arrows = {
+    
+    // Inizia la barra di potenza
+    start: function() {
+        const leftArrow = document.querySelector('.arrow-left');
+        const rightArrow = document.querySelector('.arrow-right');
+
+        if (!leftArrow || !rightArrow) {
+            console.error('Le frecce non sono state trovate nel DOM');
+            return;
+        }
+
+		leftArrow.style.display = 'block';
+        rightArrow.style.display = 'block';
+
+		renderArrows();
+    },
+
+    update: function() {
+        clearInterval(this.interval);
+        this.isRunning = false;
+
+		renderArrows();
+    },
+
+    // Nasconde la barra di potenza dopo il tiro
+    stop: function() {
+        document.querySelector('.arrow-left').style.display = 'none';
+        document.querySelector('.arrow-right').style.display = 'none';
+        document.getElementById('powerIndicator').style.display = 'none';
+    }
+};
+
+// Funzione per far partire la transizione della camera
+function startCameraTransition(startPos, endPos, duration, onComplete) {
+    let startTime = null;
+
+    function animateCamera(timestamp) {
+        if (!startTime) startTime = timestamp;
+        const elapsedTime = timestamp - startTime;
+        const t = Math.min(elapsedTime / duration, 1); // Normalizza il tempo (0-1)
+
+        // Interpolazione lineare (lerp) delle posizioni
+        transY = startPos.y + (endPos.y - startPos.y) * t;
+        transZ = startPos.z + (endPos.z - startPos.z) * t;
+
+        rotX = startPos.rotX + (endPos.rotX - startPos.rotX) * t;
+        rotY = startPos.rotY + (endPos.rotY - startPos.rotY) * t;
+
+        UpdateProjectionMatrix();
+        DrawScene();
+
+        if (t < 1) {
+            requestAnimationFrame(animateCamera); // Continua l'animazione
+        } else if (onComplete) {
+            onComplete(); // Esegui callback quando l'animazione è completa
+        }
+    }
+
+    requestAnimationFrame(animateCamera);
+}
+
+// Funzione per avviare la simulazione e la barra di potenza
 function startPlay() {
+    console.log("startPlay");
 
-	console.log("startPlay");
+    isBallMoving = false;
+    isPlaying = false;
 
-	isBallMoving = false;
-	isPlaying = false;
-	
-	transX = 0;
-	transY = 0;
-	transZ = 12;
-	rotX = -0.25;
-	rotY = 0;
+    const initialPos = { x: 0, y: transY, z: transZ, rotX: rotX, rotY: rotY };
+    const finalPos = { x: 0, y: 0, z: 12, rotX: -0.2, rotY: 0 }; // Posizione finale desiderata
+    const transitionDuration = 2000; // Durata della transizione in millisecondi (2 secondi)
 
-	disableMouseInteractions();
+    disableMouseInteractions();
 
-	UpdateProjectionMatrix();
-	DrawScene();
+    startCameraTransition(initialPos, finalPos, transitionDuration, () => {
+        console.log("Camera transition complete");
+		
+		Arrows.start();
+	PowerBar.start();
 
     keydownListenerMove = (e) => {
-        if (!isPlaying && !isBallMoving) { 
+
+        if (!isPlaying && !isBallMoving) {
             let bowlingBall = massSprings.find(item => item instanceof Ball);
 
-            if (bowlingBall) { 
+            if (bowlingBall) {
+                const boundingBox = bowlingBall.currentBoundingBox();
+                const laneWidth = 10;  // Definisci la larghezza della corsia
+
                 if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                    let direction = e.key === 'ArrowLeft' ? -0.1 : 0.1;
 
-                    let direction = e.key === 'ArrowLeft' ? -0.2 : 0.2;
-                    for (let i = 0; i < bowlingBall.pos.length; i++) {
-                        bowlingBall.pos[i].x += direction;
+                    // Controlla se la palla è fuori dai limiti della corsia prima di aggiornare la posizione
+                    if ((boundingBox.min.x + direction) > -laneWidth / 2 && 
+                        (boundingBox.max.x + direction) < laneWidth / 2) {
+                        
+                        for (let i = 0; i < bowlingBall.pos.length; i++) {
+                            bowlingBall.pos[i].x += direction;
+                        }
+						Arrows.update();
+
+                        bowlingBall.updateMesh();
+                        UpdateProjectionMatrix();
+                        DrawScene();
+                    } else {
+                        console.log("La palla sta uscendo dai limiti della corsia!");
                     }
-
-                    bowlingBall.updateMesh();
-                    UpdateProjectionMatrix();
-                    DrawScene();  
                 }
+
+                // Listener per avviare il tiro dopo aver scelto la posizione
+                keydownListenerSimulate = (e) => {
+                    if (e.key === 'ArrowUp') {  
+						var power = PowerBar.stop();
+						console.log("Power: " + power);
+						shoot(power);
+						Arrows.stop();
+                        startSimulation();  // Inizia il tiro
+                    }
+                };
+
+                document.addEventListener('keydown', keydownListenerSimulate);
             }
         }
     };
 
-    keydownListenerSimulate = (e) => {
-        if (e.key === 'ArrowUp' && !isPlaying && !isBallMoving) {  // Avvia la simulazione solo una volta
-            isPlaying = true;
-            isBallMoving = true;
+    document.addEventListener('keydown', keydownListenerMove);
+    });
+}
 
-            for (let i = 0; i < massSprings.length; i++) {
-                massSprings[i].startSimulation();
-            }
-        }
-    };
+function shoot(power)
+{
+	var ball = massSprings.find(item => item instanceof Ball);
+	
+	for (let i = 0; i < ball.pos.length; i++) 
+	{
+		ball.gravity.z = power/100 * 1;
+	}
 
-	document.addEventListener('keydown', keydownListenerMove);
-    document.addEventListener('keydown', keydownListenerSimulate);
+	console.log(ball.gravity);
+}
+
+// Funzione per abilitare il controllo della palla con frecce sinistra/destra
+function enableArrowControls() {
+
+    
+}
+
+// Funzione per avviare la simulazione del tiro
+function startSimulation() {
+    console.log("Inizio della simulazione");
+
+    isPlaying = true;
+    isBallMoving = true;
+
+    for (let i = 0; i < massSprings.length; i++) {
+        massSprings[i].startSimulation();
+    }
 }
 
 function toggleSimulation(button) {
@@ -1581,8 +1748,18 @@ function toggleSimulation(button) {
 function resetAll() {
     for (let i = 0; i < massSprings.length; i++) {
         massSprings[i].reset();
-    }
+    }	
+
+	document.querySelector('.arrow-left').style.display = 'none';
+    document.querySelector('.arrow-right').style.display = 'none';
+	document.getElementById('powerIndicator').style.display = 'none';
+
+	isBallMoving = false;
+    isPlaying = false;
+
+	canvas.ondblclick = canvas.resetView;
 }
+
 
 function restartAllSimulations() {
     for (let i = 0; i < massSprings.length; i++) {
@@ -1595,6 +1772,70 @@ function NewScene() {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
+</script>
+
+<script id="arrow" type="text/javascript">
+
+	function projectPoint(point) 
+	{
+		// Moltiplica il punto per la matrice MVP
+		var x = point[0], y = point[1], z = point[2], w = 1;
+		var px = MVP[0] * x + MVP[4] * y + MVP[8]  * z + MVP[12] * w;
+		var py = MVP[1] * x + MVP[5] * y + MVP[9]  * z + MVP[13] * w;
+		var pz = MVP[2] * x + MVP[6] * y + MVP[10] * z + MVP[14] * w;
+		var pw = MVP[3] * x + MVP[7] * y + MVP[11] * z + MVP[15] * w;
+
+		// Effettua la proiezione prospettica (divide per w)
+		if (pw != 0) {
+			px /= pw;
+			py /= pw;
+			pz /= pw;
+		}
+
+		// Trasforma le coordinate normalizzate dello spazio clip in coordinate dello schermo
+		var screenX = (px + 1) * 0.5 * canvas.width;
+		var screenY = (1 - py) * 0.5 * canvas.height;
+
+		return [screenX, screenY, pz];
+	}
+
+	function renderArrows() {
+
+		let ball = massSprings.find(item => item instanceof Ball);
+		if (!ball) {
+			console.error('Palla non trovata');	
+		}
+
+		// Ottieni il bounding box della palla
+		const boundingBox = ball.currentBoundingBox();
+		
+		// Calcola la posizione delle frecce rispetto ai bordi della palla
+		const leftArrowPosition = [boundingBox.min.x, boundingBox.min.y, boundingBox.min.z];
+		const rightArrowPosition = [boundingBox.max.x, boundingBox.min.y, boundingBox.min.z];
+
+		// Proietta le posizioni delle frecce nello spazio 2D
+		const leftArrowScreenPos = projectPoint(leftArrowPosition);
+		const rightArrowScreenPos = projectPoint(rightArrowPosition);
+
+		// Ottieni gli elementi freccia dal DOM
+		const leftArrow = document.querySelector('.arrow-left');
+		const rightArrow = document.querySelector('.arrow-right');
+
+		if (!leftArrow || !rightArrow) {
+			console.error('Le frecce non sono state trovate nel DOM');
+			return;  // Uscire dalla funzione se non trovate
+		}
+
+		// Posiziona le frecce sul canvas in base alle coordinate 2D
+		leftArrow.style.left = leftArrowScreenPos[0]- leftArrow.offsetWidth + 'px';
+		leftArrow.style.top = leftArrowScreenPos[1] + 'px';
+
+		rightArrow.style.left = rightArrowScreenPos[0] + 'px';
+		rightArrow.style.top = rightArrowScreenPos[1] + 'px';
+	}
+
+
+
 </script>
 
 
@@ -1628,5 +1869,18 @@ function NewScene() {
 </div>
 </div>
 </div>
+<div id="powerIndicator" style="display: none;">
+    <label id="powerLabel"></label>
+    <div id="powerBarContainer" style="width: 100px; height: 400px; background-color: grey; position: relative;">
+        <div id="powerBar" style="width: 100%; height: 0%; background-color: green; position: absolute; bottom: 0;"></div>
+    </div>
+</div>
+<div class="arrow-left"></div>
+<div class="arrow-right"></div>
+
+
+
+
+
 </body>
 </html>
