@@ -551,8 +551,9 @@ class Vec3 {
 function ToVec3(a) { return new Vec3(a[0],a[1],a[2]); }
 
 
-function SimTimeStep(dt, positions, velocities, springs, stiffness, damping, particleMass, gravity, restitution, flagcollision, boundingBoxes) {
-    
+function SimTimeStep(dt, positions, velocities, springs, stiffness, damping, particleMass, gravity, restitution, flagcollision, boundingBoxes) 
+{
+    // console.log("SimTimeStep")
     var forces = new Array(positions.length);
     for (var i = 0; i < forces.length; ++i) forces[i] = new Vec3(0, 0, 0);
 
@@ -663,6 +664,235 @@ function SimTimeStep(dt, positions, velocities, springs, stiffness, damping, par
     }
 }
 
+function SimTimeStep_Verlet(dt, positions, prevPositions, velocities, springs, stiffness, damping, particleMass, gravity, restitution, flagcollision, boundingBoxes) 
+{
+	// console.log("SimTimeStep_Verlet");
+    var forces = new Array(positions.length);
+    for (var i = 0; i < forces.length; ++i) forces[i] = new Vec3(0, 0, 0);
+
+    // Gravità
+    for (var i = 0; i < positions.length; i++) {
+        forces[i] = forces[i].add(gravity.mul(particleMass));
+    }
+    
+    // Molle
+    for (var i = 0; i < springs.length; i++) {
+        let pos0 = positions[springs[i].p0];
+        let pos1 = positions[springs[i].p1];
+        let vel0 = velocities[springs[i].p0];
+        let vel1 = velocities[springs[i].p1];
+        let displacement = pos1.sub(pos0);
+
+        let direction = displacement.unit();
+        let stretch = displacement.len() - springs[i].rest;
+        let relativeVelocity = vel1.sub(vel0);
+        
+        let Fs = direction.mul(stretch * stiffness);
+        let Fd = direction.mul(relativeVelocity.dot(direction) * damping);
+
+        forces[springs[i].p0] = forces[springs[i].p0].add(Fs.add(Fd));
+        forces[springs[i].p1] = forces[springs[i].p1].sub(Fs.add(Fd));
+    }
+
+    // Gestione delle collisioni con il suolo
+    for (var i = 0; i < positions.length; i++) {
+        if (positions[i].y < 0) {
+            positions[i].y = 0;
+            velocities[i].y *= -restitution;
+        }
+
+        if (positions[i].y == 0) {
+            velocities[i].x *= 0.90;
+            velocities[i].z *= 0.90;
+        }
+    }
+
+    // Gestione delle collisioni con le bounding box
+    if (flagcollision) {
+        for (let b = 0; b < boundingBoxes.length; b++) {
+            let boxB = boundingBoxes[b];
+            for (let i = 0; i < positions.length; i++) {
+                if (positions[i].x >= boxB.min.x && positions[i].x <= boxB.max.x &&
+                    positions[i].y >= boxB.min.y && positions[i].y <= boxB.max.y &&
+                    positions[i].z >= boxB.min.z && positions[i].z <= boxB.max.z) {
+                        
+                    let initialMomentum = velocities[i].mul(particleMass);
+
+                    let distToMinX = positions[i].x - boxB.min.x;
+                    let distToMaxX = boxB.max.x - positions[i].x;
+                
+                    let distToMinY = positions[i].y - boxB.min.y;
+                    let distToMaxY = boxB.max.y - positions[i].y;
+                
+                    let distToMinZ = positions[i].z - boxB.min.z;
+                    let distToMaxZ = boxB.max.z - positions[i].z;
+                
+                    let minDistX = Math.min(distToMinX, distToMaxX);
+                    let minDistY = Math.min(distToMinY, distToMaxY);
+                    let minDistZ = Math.min(distToMinZ, distToMaxZ);
+                
+                    if (minDistX <= minDistY && minDistX <= minDistZ) {
+                        if (distToMinX < distToMaxX) {
+                            positions[i].x = boxB.min.x - 0.001;
+                        } else {
+                            positions[i].x = boxB.max.x + 0.001;
+                        }
+                        velocities[i].x *= -restitution;
+                    } else if (minDistY <= minDistX && minDistY <= minDistZ) {
+                        if (distToMinY < distToMaxY) {
+                            positions[i].y = boxB.min.y - 0.001;
+                        } else {
+                            positions[i].y = boxB.max.y + 0.001;
+                        }
+                        velocities[i].y *= -restitution;
+                    } else {
+                        if (distToMinZ < distToMaxZ) {
+                            positions[i].z = boxB.min.z - 0.001;
+                        } else {
+                            positions[i].z = boxB.max.z + 0.001;
+                        }
+                        velocities[i].z *= -restitution;
+                    }
+
+                    let finalMomentum = velocities[i].mul(particleMass);
+                    let impulse = finalMomentum.sub(initialMomentum);
+
+                    let dampingFactor = 0.85; 
+                    impulse = impulse.mul(dampingFactor);
+
+                    forces[i] = forces[i].add(impulse.div(dt));
+                }
+            }
+        }
+    }
+    
+    // Aggiornamento posizioni utilizzando Verlet Integration
+    for (var i = 0; i < positions.length; i++) {
+        let acc = forces[i].div(particleMass);  // Calcolo dell'accelerazione
+
+        // Nuova posizione basata su Verlet Integration
+        let tempPosition = positions[i];  // Memorizziamo la posizione attuale per usarla come "prevPosition" nel passo successivo
+        positions[i] = positions[i].mul(2).sub(prevPositions[i]).add(acc.mul(dt * dt));  // Verlet formula
+        prevPositions[i] = tempPosition;  // Aggiorniamo la vecchia posizione
+    }
+}
+
+function SimTimeStep_ImplicitEuler(dt, positions, velocities, springs, stiffness, damping, particleMass, gravity, restitution, flagcollision, boundingBoxes) 
+{
+
+	// console.log("SimTimeStep_ImplicitEuler");
+	var forces = new Array(positions.length);
+	for (var i = 0; i < forces.length; ++i) forces[i] = new Vec3(0, 0, 0);
+
+	// Gravità
+	for (var i = 0; i < positions.length; i++) {
+		forces[i] = forces[i].add(gravity.mul(particleMass));
+	}
+
+	// Molle
+	for (var i = 0; i < springs.length; i++) {
+		let pos0 = positions[springs[i].p0];
+		let pos1 = positions[springs[i].p1];
+		let vel0 = velocities[springs[i].p0];
+		let vel1 = velocities[springs[i].p1];
+		let displacement = pos1.sub(pos0);
+
+		let direction = displacement.unit();
+		let stretch = displacement.len() - springs[i].rest;
+		let relativeVelocity = vel1.sub(vel0);
+
+		let Fs = direction.mul(stretch * stiffness);
+		let Fd = direction.mul(relativeVelocity.dot(direction) * damping);
+
+		forces[springs[i].p0] = forces[springs[i].p0].add(Fs.add(Fd));
+		forces[springs[i].p1] = forces[springs[i].p1].sub(Fs.add(Fd));
+	}
+
+	// Collisioni con il suolo
+	for (var i = 0; i < positions.length; i++) {
+		if (positions[i].y < 0) {
+			positions[i].y = 0;
+			velocities[i].y *= -restitution;
+		}
+
+		if (positions[i].y == 0) {
+			velocities[i].x *= 0.90;
+			velocities[i].z *= 0.90;
+		}
+	}
+
+	// Gestione delle collisioni con le bounding box
+	if (flagcollision) {
+		for (let b = 0; b < boundingBoxes.length; b++) {
+			let boxB = boundingBoxes[b];
+			for (let i = 0; i < positions.length; i++) {
+				if (positions[i].x >= boxB.min.x && positions[i].x <= boxB.max.x &&
+					positions[i].y >= boxB.min.y && positions[i].y <= boxB.max.y &&
+					positions[i].z >= boxB.min.z && positions[i].z <= boxB.max.z) {
+						
+					let initialMomentum = velocities[i].mul(particleMass);
+
+					let distToMinX = positions[i].x - boxB.min.x;
+					let distToMaxX = boxB.max.x - positions[i].x;
+				
+					let distToMinY = positions[i].y - boxB.min.y;
+					let distToMaxY = boxB.max.y - positions[i].y;
+				
+					let distToMinZ = positions[i].z - boxB.min.z;
+					let distToMaxZ = boxB.max.z - positions[i].z;
+				
+					let minDistX = Math.min(distToMinX, distToMaxX);
+					let minDistY = Math.min(distToMinY, distToMaxY);
+					let minDistZ = Math.min(distToMinZ, distToMaxZ);
+				
+					if (minDistX <= minDistY && minDistX <= minDistZ) {
+						if (distToMinX < distToMaxX) {
+							positions[i].x = boxB.min.x - 0.001;
+						} else {
+							positions[i].x = boxB.max.x + 0.001;
+						}
+						velocities[i].x *= -restitution;
+					} else if (minDistY <= minDistX && minDistY <= minDistZ) {
+						if (distToMinY < distToMaxY) {
+							positions[i].y = boxB.min.y - 0.001;
+						} else {
+							positions[i].y = boxB.max.y + 0.001;
+						}
+						velocities[i].y *= -restitution;
+					} else {
+						if (distToMinZ < distToMaxZ) {
+							positions[i].z = boxB.min.z - 0.001;
+						} else {
+							positions[i].z = boxB.max.z + 0.001;
+						}
+						velocities[i].z *= -restitution;
+					}
+
+					let finalMomentum = velocities[i].mul(particleMass);
+					let impulse = finalMomentum.sub(initialMomentum);
+
+					let dampingFactor = 0.85; 
+					impulse = impulse.mul(dampingFactor);
+
+					forces[i] = forces[i].add(impulse.div(dt));
+				}
+			}
+		}
+	}
+
+	// Aggiornamento delle velocità e delle posizioni utilizzando Euler implicito
+	for (var i = 0; i < positions.length; i++) {
+		// Calcoliamo l'accelerazione basata sulle forze attuali
+		let acc = forces[i].div(particleMass);
+
+		// Aggiorniamo le velocità in modo implicito
+		velocities[i] = velocities[i].add(acc.mul(dt));  // v_new = v_old + dt * a(x_new)
+		
+		// Aggiorniamo le posizioni basandoci sulle nuove velocità
+		positions[i] = positions[i].add(velocities[i].mul(dt));  // x_new = x_old + dt * v_new
+	}
+}
+
 
 class MassSpring {
 
@@ -720,6 +950,8 @@ class MassSpring {
 	{
 		this.pos = Array( this.mesh.vpos.length );
 		for ( var i=0; i<this.pos.length; ++i ) this.pos[i] = ToVec3( this.mesh.vpos[i] );
+		this.prevPos = Array( this.mesh.vpos.length );
+		for ( var i=0; i<this.prevPos.length; ++i ) this.prevPos[i] = ToVec3( this.mesh.vpos[i] );
 		this.vel = Array( this.pos.length );
 		for ( var i=0; i<this.vel.length; ++i ) this.vel[i] = new Vec3(0,0,0);
 		this.nrm = Array( this.mesh.norm.length );
@@ -825,7 +1057,11 @@ class MassSpring {
 			this.gravity.y = 0;
 		}
 
-		SimTimeStep(dt, this.pos, this.vel, this.springs, this.stiffness, damping, this.mass, this.gravity, this.restitution, flagCollision, boundingBoxes);
+		// SimTimeStep(dt, this.pos, this.vel, this.springs, this.stiffness, damping, this.mass, this.gravity, this.restitution, flagCollision, boundingBoxes);
+
+		SimTimeStep_Verlet(dt, this.pos, this.prevPos,this.vel, this.springs, this.stiffness, damping, this.mass, this.gravity, this.restitution, flagCollision, boundingBoxes)
+
+		// SimTimeStep_ImplicitEuler(dt, this.pos, this.vel, this.springs, this.stiffness, damping, this.mass, this.gravity, this.restitution, flagCollision, boundingBoxes);
 
 		if (p) {
 			this.holdVert.set(p);
