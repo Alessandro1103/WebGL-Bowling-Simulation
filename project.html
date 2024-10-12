@@ -20,7 +20,6 @@ var MV, MVP;
 var verticesArray = [];
 var offsetVertices = [];
 let isPlaying = false;
-let isBallMoving = false;
 let keydownListenerMove;
 let keydownListenerSimulate;
 
@@ -1038,7 +1037,7 @@ class MassSpring {
 		UpdateProjectionMatrix();
 
 		// Aggiorna posizioni e velocità
-		var timestep = document.getElementById('timestep').value;
+		var timestep = 10;
 		const dt = timestep / 1000;  // time step in seconds
 		const damping = this.damping * this.stiffness * dt;
 
@@ -1073,8 +1072,9 @@ class MassSpring {
 
 
 	startSimulation() {
-		var timestep = document.getElementById('timestep').value;
+		var timestep = 10;
 		if (!this.isSimulationRunning()) {
+			
 			this.timer = setInterval(function() {
 				for (let i = 0; i < massSprings.length; i++) {
 					massSprings[i].simTimeStep();
@@ -1555,12 +1555,6 @@ function LoadTexturesForObjects(objects) {
     });
 }
 
-function SetTimeStepSize(param) 
-{
-    var s = param.value;
-    document.getElementById('timestep-value').innerText = s + " ms";
-}
-
 function SetGravity(param) 
 {
     var v = param.value;
@@ -1825,11 +1819,11 @@ const Arrows = {
 		renderArrows();
     },
 
-    update: function() {
+    update: function(border) {
         clearInterval(this.interval);
         this.isRunning = false;
 
-		renderArrows();
+		renderArrows(border);
     },
 
     // Nasconde la barra di potenza dopo il tiro
@@ -1873,7 +1867,6 @@ function startCameraTransition(startPos, endPos, duration, onComplete) {
 function startPlay() {
     console.log("startPlay");
 
-    isBallMoving = false;
     isPlaying = false;
 
     const initialPos = { x: 0, y: transY, z: transZ, rotX: rotX, rotY: rotY };
@@ -1882,71 +1875,83 @@ function startPlay() {
 
     disableMouseInteractions();
 
-    startCameraTransition(initialPos, finalPos, transitionDuration, () => {
-        console.log("Camera transition complete");
-		
+    startCameraTransition(initialPos, finalPos, transitionDuration, () => 
+	{
 		Arrows.start();
-	PowerBar.start();
+		PowerBar.start();
 
-    keydownListenerMove = (e) => {
+		keydownListenerMove = (e) => {  
+			if (!isPlaying) {  
+				let bowlingBall = massSprings.find(item => item instanceof Ball);  
+				if (bowlingBall) {  
+					const boundingBox = bowlingBall.currentBoundingBox();  
+					const laneWidth = 5;  // Definisci la larghezza della corsia  
 
-        if (!isPlaying && !isBallMoving) {
-            let bowlingBall = massSprings.find(item => item instanceof Ball);
+					// Movimento sinistra-destra
+					if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {  
+						console.log("left-right")  
+						let direction = e.key === 'ArrowLeft' ? -0.1 : 0.1;  
+						
+						var border;  
+						if ((boundingBox.min.x + direction) > -laneWidth / 2 &&  
+							(boundingBox.max.x + direction) < laneWidth / 2) {  
 
-            if (bowlingBall) {
-                const boundingBox = bowlingBall.currentBoundingBox();
-                const laneWidth = 10;  // Definisci la larghezza della corsia
+							if ((boundingBox.min.x + direction) - (-laneWidth / 2) <= 0.1) {  
+								console.log("La palla è vicino al bordo sinistro della corsia!");  
+								border = "left";  
+							} else if ((laneWidth / 2 - (boundingBox.max.x + direction)) <= 0.1) {  
+								console.log("La palla è vicino al bordo destro della corsia!");  
+								border = "right";  
+							} else {  
+								border = "none";  
+							}  
 
-                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                    let direction = e.key === 'ArrowLeft' ? -0.1 : 0.1;
+							for (let i = 0; i < bowlingBall.pos.length; i++) {  
+								bowlingBall.pos[i].x += direction;  
+							}  
 
-                    // Controlla se la palla è fuori dai limiti della corsia prima di aggiornare la posizione
-                    if ((boundingBox.min.x + direction) > -laneWidth / 2 && 
-                        (boundingBox.max.x + direction) < laneWidth / 2) {
-                        
-                        for (let i = 0; i < bowlingBall.pos.length; i++) {
-                            bowlingBall.pos[i].x += direction;
-                        }
-						Arrows.update();
+							Arrows.update(border);  
+							bowlingBall.updateMesh();  
+							UpdateProjectionMatrix();  
+							DrawScene();  
+						} else {  
+							console.log("La palla sta uscendo dai limiti della corsia!");  
+						}  
+					}  
+				}  
+			}  
+		};  
 
-                        bowlingBall.updateMesh();
-                        UpdateProjectionMatrix();
-                        DrawScene();
-                    } else {
-                        console.log("La palla sta uscendo dai limiti della corsia!");
-                    }
-                }
+		// Listener per avviare il tiro senza dipendere dal movimento sinistra-destra
+		keydownListenerSimulate = (e) => {  
+			if (e.key === 'ArrowUp') {  
+				var power = PowerBar.stop();  
+				console.log("Power: " + power);  
+				shoot(power);  
+				Arrows.stop();  
+				startSimulation();  // Inizia il tiro  
+			}  
+		};  
 
-                // Listener per avviare il tiro dopo aver scelto la posizione
-                keydownListenerSimulate = (e) => {
-                    if (e.key === 'ArrowUp') {  
-						var power = PowerBar.stop();
-						console.log("Power: " + power);
-						shoot(power);
-						Arrows.stop();
-                        startSimulation();  // Inizia il tiro
-                    }
-                };
+		// Aggiungi il listener per il tiro indipendentemente dal movimento sinistra-destra
+		document.addEventListener('keydown', keydownListenerSimulate);
 
-                document.addEventListener('keydown', keydownListenerSimulate);
-            }
-        }
-    };
+		// Aggiungi il listener per il movimento sinistra-destra
+		document.addEventListener('keydown', keydownListenerMove);
 
-    document.addEventListener('keydown', keydownListenerMove);
+		document.addEventListener('keydown', keydownListenerMove);
     });
 }
 
 function shoot(power)
 {
 	var ball = massSprings.find(item => item instanceof Ball);
-	
+		
 	for (let i = 0; i < ball.pos.length; i++) 
 	{
 		ball.gravity.z = power/100 * 1;
 	}
 
-	console.log(ball.gravity);
 }
 
 // Funzione per avviare la simulazione del tiro
@@ -1954,7 +1959,6 @@ function startSimulation() {
     console.log("Inizio della simulazione");
 
     isPlaying = true;
-    isBallMoving = true;
 
     for (let i = 0; i < massSprings.length; i++) {
         massSprings[i].startSimulation();
@@ -1984,7 +1988,6 @@ function resetAll() {
     document.querySelector('.arrow-right').style.display = 'none';
 	document.getElementById('powerIndicator').style.display = 'none';
 
-	isBallMoving = false;
     isPlaying = false;
 
 	canvas.ondblclick = canvas.resetView;
@@ -2029,40 +2032,60 @@ function NewScene() {
 		return [screenX, screenY, pz];
 	}
 
-	function renderArrows() {
-
+	function renderArrows(border = "none") {
+		// Trova la palla all'interno di massSprings
 		let ball = massSprings.find(item => item instanceof Ball);
 		if (!ball) {
 			console.error('Palla non trovata');	
+			return;
 		}
 
 		// Ottieni il bounding box della palla
 		const boundingBox = ball.currentBoundingBox();
-		
+
 		// Calcola la posizione delle frecce rispetto ai bordi della palla
 		const leftArrowPosition = [boundingBox.min.x, boundingBox.min.y, boundingBox.min.z];
 		const rightArrowPosition = [boundingBox.max.x, boundingBox.min.y, boundingBox.min.z];
 
-		// Proietta le posizioni delle frecce nello spazio 2D
-		const leftArrowScreenPos = projectPoint(leftArrowPosition);
-		const rightArrowScreenPos = projectPoint(rightArrowPosition);
+		// Definiamo le variabili per le posizioni delle frecce proiettate
+		let leftArrowScreenPos, rightArrowScreenPos;
 
 		// Ottieni gli elementi freccia dal DOM
 		const leftArrow = document.querySelector('.arrow-left');
 		const rightArrow = document.querySelector('.arrow-right');
 
-		if (!leftArrow || !rightArrow) {
-			console.error('Le frecce non sono state trovate nel DOM');
-			return;  // Uscire dalla funzione se non trovate
+		// Semplifichiamo i controlli in base al parametro `border`
+		if (border === "left") {
+			// Nascondi la freccia sinistra perché siamo al bordo sinistro
+			leftArrow.style.display = 'none';
+			// Proietta e posiziona solo la freccia destra
+			rightArrowScreenPos = projectPoint(rightArrowPosition);
+		} else if (border === "right") {
+			// Nascondi la freccia destra perché siamo al bordo destro
+			rightArrow.style.display = 'none';
+			// Proietta e posiziona solo la freccia sinistra
+			leftArrowScreenPos = projectPoint(leftArrowPosition);
+		} else {
+			// Nessun bordo, mostra entrambe le frecce
+			leftArrow.style.display = 'block';
+			rightArrow.style.display = 'block';
+			// Proietta entrambe le frecce
+			leftArrowScreenPos = projectPoint(leftArrowPosition);
+			rightArrowScreenPos = projectPoint(rightArrowPosition);
 		}
 
 		// Posiziona le frecce sul canvas in base alle coordinate 2D
-		leftArrow.style.left = leftArrowScreenPos[0]- leftArrow.offsetWidth + 'px';
-		leftArrow.style.top = leftArrowScreenPos[1] + 'px';
+		if (leftArrowScreenPos) {
+			leftArrow.style.left = leftArrowScreenPos[0] - leftArrow.offsetWidth + 'px';
+			leftArrow.style.top = leftArrowScreenPos[1] + 'px';
+		}
 
-		rightArrow.style.left = rightArrowScreenPos[0] + 'px';
-		rightArrow.style.top = rightArrowScreenPos[1] + 'px';
+		if (rightArrowScreenPos) {
+			rightArrow.style.left = rightArrowScreenPos[0] + 'px';
+			rightArrow.style.top = rightArrowScreenPos[1] + 'px';
+		}
 	}
+
 
 
 
@@ -2079,9 +2102,7 @@ function NewScene() {
 <div class="control-group">
 	<div class="control"><input type="button" value="Start Play" onclick="toggleSimulation(this)"></div>
 	<div class="control"><input type="button" value="Reset" onclick="resetAll(); DrawScene();"></div>
-	
-	<div class="control"><span id="timestep-label">Time Step Size:</span><span class="value" id="timestep-value">20 ms</span><input id="timestep" type="range" min="1" max="100" value="20" oninput="SetTimeStepSize(this)" onchange="restartAllSimulations()" ondblclick="this.value=20;this.oninput();this.onchange()"/></div>
-	
+		
 	<div class="control"><span id="gravity-label">Gravity:</span><span class="value" id="gravity-value">1</span><input id="gravity" type="range" min="0" max="100" value="20" oninput="SetGravity(this)" ondblclick="this.value=20;this.oninput()"/></div>
 	
 	<div class="control"><span id="mass-label">Mass:</span><span class="value" id="mass-value">1</span><input id="mass" type="range" min="1" max="100" value="20" oninput="SetMass(this)" ondblclick="this.value=20;this.oninput()"/></div>
