@@ -552,7 +552,6 @@ function ToVec3(a) { return new Vec3(a[0],a[1],a[2]); }
 
 function SimTimeStep(dt, positions, velocities, springs, stiffness, damping, particleMass, gravity, restitution, flagcollision, boundingBoxes) 
 {
-    // console.log("SimTimeStep")
     var forces = new Array(positions.length);
     for (var i = 0; i < forces.length; ++i) forces[i] = new Vec3(0, 0, 0);
 
@@ -580,19 +579,34 @@ function SimTimeStep(dt, positions, velocities, springs, stiffness, damping, par
         forces[springs[i].p1] = forces[springs[i].p1].sub(Fs.add(Fd));
     }
 
-    // Gestione delle collisioni con il suolo
-    for (var i = 0; i < positions.length; i++) {
-        if (positions[i].y < 0) {
-            positions[i].y = 0;
-            velocities[i].y *= -restitution;
-        }
+	const laneWidth = 5;
 
-        if (positions[i].y == 0) {
-            velocities[i].x *= 0.90;
-            velocities[i].z *= 0.90;
-        }
+	for (var i = 0; i < positions.length; i++) {
+		// Controllo del bordo inferiore per la posizione y
+		if (positions[i].y < 0) {
+			positions[i].y = 0;
+			velocities[i].y *= -restitution;
+		}
 
-    }
+		// Controllo del bordo destro del corridoio (x > laneWidth / 2)
+		if (positions[i].x > laneWidth / 2) {
+			positions[i].x = laneWidth / 2;
+			velocities[i].x *= -restitution;
+		}
+
+		// Controllo del bordo sinistro del corridoio (x < -laneWidth / 2)
+		if (positions[i].x < -laneWidth / 2) {
+			positions[i].x = -laneWidth / 2;
+			velocities[i].x *= -restitution;
+		}
+
+		// Ridurre le velocità x e z se y è a 0 (a terra)
+		if (positions[i].y == 0) {
+			velocities[i].x *= 0.90;
+			velocities[i].z *= 0.90;
+		}
+	}
+
 
     if (flagcollision) {
 
@@ -665,7 +679,6 @@ function SimTimeStep(dt, positions, velocities, springs, stiffness, damping, par
 
 function SimTimeStep_Verlet(dt, positions, prevPositions, velocities, springs, stiffness, damping, particleMass, gravity, restitution, flagcollision, boundingBoxes) 
 {
-	// console.log("SimTimeStep_Verlet");
     var forces = new Array(positions.length);
     for (var i = 0; i < forces.length; ++i) forces[i] = new Vec3(0, 0, 0);
 
@@ -693,18 +706,34 @@ function SimTimeStep_Verlet(dt, positions, prevPositions, velocities, springs, s
         forces[springs[i].p1] = forces[springs[i].p1].sub(Fs.add(Fd));
     }
 
-    // Gestione delle collisioni con il suolo
-    for (var i = 0; i < positions.length; i++) {
-        if (positions[i].y < 0) {
-            positions[i].y = 0;
-            velocities[i].y *= -restitution;
-        }
+	const laneWidth = 5;
 
-        if (positions[i].y == 0) {
-            velocities[i].x *= 0.90;
-            velocities[i].z *= 0.90;
-        }
-    }
+	for (var i = 0; i < positions.length; i++) {
+		// Controllo del bordo inferiore per la posizione y
+		if (positions[i].y < 0) {
+			positions[i].y = 0;
+			velocities[i].y *= -restitution;
+		}
+
+		// Controllo del bordo destro del corridoio (x > laneWidth / 2)
+		if (positions[i].x > laneWidth / 2) {
+			positions[i].x = laneWidth / 2;
+			velocities[i].x *= -restitution;
+		}
+
+		// Controllo del bordo sinistro del corridoio (x < -laneWidth / 2)
+		if (positions[i].x < -laneWidth / 2) {
+			positions[i].x = -laneWidth / 2;
+			velocities[i].x *= -restitution;
+		}
+
+		// Ridurre le velocità x e z se y è a 0 (a terra)
+		if (positions[i].y == 0) {
+			velocities[i].x *= 0.90;
+			velocities[i].z *= 0.90;
+		}
+	}
+
 
     // Gestione delle collisioni con le bounding box
     if (flagcollision) {
@@ -778,8 +807,6 @@ function SimTimeStep_Verlet(dt, positions, prevPositions, velocities, springs, s
 
 function SimTimeStep_ImplicitEuler(dt, positions, velocities, springs, stiffness, damping, particleMass, gravity, restitution, flagcollision, boundingBoxes) 
 {
-
-	// console.log("SimTimeStep_ImplicitEuler");
 	var forces = new Array(positions.length);
 	for (var i = 0; i < forces.length; ++i) forces[i] = new Vec3(0, 0, 0);
 
@@ -807,13 +834,28 @@ function SimTimeStep_ImplicitEuler(dt, positions, velocities, springs, stiffness
 		forces[springs[i].p1] = forces[springs[i].p1].sub(Fs.add(Fd));
 	}
 
-	// Collisioni con il suolo
+	const laneWidth = 5;
+
 	for (var i = 0; i < positions.length; i++) {
+		// Controllo del bordo inferiore per la posizione y
 		if (positions[i].y < 0) {
 			positions[i].y = 0;
 			velocities[i].y *= -restitution;
 		}
 
+		// Controllo del bordo destro del corridoio (x > laneWidth / 2)
+		if (positions[i].x > laneWidth / 2) {
+			positions[i].x = laneWidth / 2;
+			velocities[i].x *= -restitution;
+		}
+
+		// Controllo del bordo sinistro del corridoio (x < -laneWidth / 2)
+		if (positions[i].x < -laneWidth / 2) {
+			positions[i].x = -laneWidth / 2;
+			velocities[i].x *= -restitution;
+		}
+
+		// Ridurre le velocità x e z se y è a 0 (a terra)
 		if (positions[i].y == 0) {
 			velocities[i].x *= 0.90;
 			velocities[i].z *= 0.90;
@@ -1037,7 +1079,7 @@ class MassSpring {
 		UpdateProjectionMatrix();
 
 		// Aggiorna posizioni e velocità
-		var timestep = 10;
+		var timestep = document.getElementById('timestep').value;
 		const dt = timestep / 1000;  // time step in seconds
 		const damping = this.damping * this.stiffness * dt;
 
@@ -1050,10 +1092,6 @@ class MassSpring {
 					boundingBoxes.push(otherBoundingBox);  // Aggiungi la bounding box rilevata
 				}
 			}
-		}
-
-		if (flagCollision && this instanceof Ball) {
-			this.gravity.y = 0;
 		}
 
 		// SimTimeStep(dt, this.pos, this.vel, this.springs, this.stiffness, damping, this.mass, this.gravity, this.restitution, flagCollision, boundingBoxes);
@@ -1072,7 +1110,7 @@ class MassSpring {
 
 
 	startSimulation() {
-		var timestep = 10;
+		var timestep = document.getElementById('timestep').value;	
 		if (!this.isSimulationRunning()) {
 			
 			this.timer = setInterval(function() {
@@ -1555,6 +1593,12 @@ function LoadTexturesForObjects(objects) {
     });
 }
 
+function SetTimeStepSize(param) 
+{
+    var s = param.value;
+    document.getElementById('timestep-value').innerText = s + " ms";
+}
+
 function SetGravity(param) 
 {
     var v = param.value;
@@ -1727,10 +1771,8 @@ function enableMouseInteractions()
 	}
 }
 
-function stopPlay() {
-	
-	console.log("stopPlay");
-
+function stopPlay() 
+{	
 	enableMouseInteractions();
 
 	for (let i = 0; i < massSprings.length; i++) {
@@ -1864,9 +1906,8 @@ function startCameraTransition(startPos, endPos, duration, onComplete) {
 }
 
 // Funzione per avviare la simulazione e la barra di potenza
-function startPlay() {
-    console.log("startPlay");
-
+function startPlay() 
+{
     isPlaying = false;
 
     const initialPos = { x: 0, y: transY, z: transZ, rotX: rotX, rotY: rotY };
@@ -1880,29 +1921,35 @@ function startPlay() {
 		Arrows.start();
 		PowerBar.start();
 
-		keydownListenerMove = (e) => {  
-			if (!isPlaying) {  
+		keydownListenerMove = (e) => 
+		{  
+			
+			if (!isPlaying) 
+			{  
 				let bowlingBall = massSprings.find(item => item instanceof Ball);  
-				if (bowlingBall) {  
+				
+				if (bowlingBall) 
+				{  
 					const boundingBox = bowlingBall.currentBoundingBox();  
-					const laneWidth = 5;  // Definisci la larghezza della corsia  
+					const laneWidth = 5;
 
-					// Movimento sinistra-destra
-					if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {  
-						console.log("left-right")  
+					if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') 
+					{   
 						let direction = e.key === 'ArrowLeft' ? -0.1 : 0.1;  
+						let border;  
 						
-						var border;  
-						if ((boundingBox.min.x + direction) > -laneWidth / 2 &&  
-							(boundingBox.max.x + direction) < laneWidth / 2) {  
-
-							if ((boundingBox.min.x + direction) - (-laneWidth / 2) <= 0.1) {  
-								console.log("La palla è vicino al bordo sinistro della corsia!");  
+						if ((boundingBox.min.x + direction) > -laneWidth / 2 && (boundingBox.max.x + direction) < laneWidth / 2) 
+						{  
+							if ((boundingBox.min.x + direction) - (-laneWidth / 2) <= 0.1) 
+							{  
 								border = "left";  
-							} else if ((laneWidth / 2 - (boundingBox.max.x + direction)) <= 0.1) {  
-								console.log("La palla è vicino al bordo destro della corsia!");  
+							} 
+							else if ((laneWidth / 2 - (boundingBox.max.x + direction)) <= 0.1) 
+							{  
 								border = "right";  
-							} else {  
+							} 
+							else 
+							{  
 								border = "none";  
 							}  
 
@@ -1914,7 +1961,9 @@ function startPlay() {
 							bowlingBall.updateMesh();  
 							UpdateProjectionMatrix();  
 							DrawScene();  
-						} else {  
+						} 
+						else 
+						{  
 							console.log("La palla sta uscendo dai limiti della corsia!");  
 						}  
 					}  
@@ -1946,7 +1995,7 @@ function startPlay() {
 function shoot(power)
 {
 	var ball = massSprings.find(item => item instanceof Ball);
-		
+
 	for (let i = 0; i < ball.pos.length; i++) 
 	{
 		ball.gravity.z = power/100 * 1;
@@ -1956,7 +2005,6 @@ function shoot(power)
 
 // Funzione per avviare la simulazione del tiro
 function startSimulation() {
-    console.log("Inizio della simulazione");
 
     isPlaying = true;
 
@@ -2103,6 +2151,8 @@ function NewScene() {
 	<div class="control"><input type="button" value="Start Play" onclick="toggleSimulation(this)"></div>
 	<div class="control"><input type="button" value="Reset" onclick="resetAll(); DrawScene();"></div>
 		
+	<div class="control"><span id="timestep-label">Time Step Size:</span><span class="value" id="timestep-value">20 ms</span><input id="timestep" type="range" min="1" max="100" value="20" oninput="SetTimeStepSize(this)" onchange="restartAllSimulations()" ondblclick="this.value=20;this.oninput();this.onchange()"/></div>
+	
 	<div class="control"><span id="gravity-label">Gravity:</span><span class="value" id="gravity-value">1</span><input id="gravity" type="range" min="0" max="100" value="20" oninput="SetGravity(this)" ondblclick="this.value=20;this.oninput()"/></div>
 	
 	<div class="control"><span id="mass-label">Mass:</span><span class="value" id="mass-value">1</span><input id="mass" type="range" min="1" max="100" value="20" oninput="SetMass(this)" ondblclick="this.value=20;this.oninput()"/></div>
