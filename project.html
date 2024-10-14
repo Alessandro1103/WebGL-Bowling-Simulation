@@ -1092,8 +1092,6 @@ class MassSpring {
 		const dt = timestep / 1000;  // time step in seconds
 		const damping = this.damping * this.stiffness * dt;
 
-		console.log((massSprings[i].initBoundingBox - massSprings[i].currentBoundingBox()).len())
-
 		let cBoundingBox = this.currentBoundingBox();
 		for (let i = 0; i < massSprings.length; i++) {
 			if (massSprings[i] !== this && !(massSprings[i] instanceof Floor)) {
@@ -1123,7 +1121,8 @@ class MassSpring {
 
 		const threshold = 6;
 
-		if ((this.currentBoundingBox().max.z + this.currentBoundingBox().min.z)/2 > threshold) 
+		// if ((this.currentBoundingBox().max.z + this.currentBoundingBox().min.z)/2 > threshold) 
+		if (this.currentBoundingBox().max.z > threshold) 
 		{
 			this.isVisible = false;
 		}
@@ -1797,28 +1796,27 @@ function enableMouseInteractions()
 	}
 }
 
-function computePoints()
-{
-	points = 0;
-	threshold = 
-	for (let i=0; i<massSprings.length; i++)
-	{
-		if (massSprings[i] instanceof Pin) 
-		{
-			if ((massSprings[i].initBoundingBox - massSprings[i].currentBoundingBox()).len() < threshold)
-				points++;
-		}
-	}
+function computePoints() {
+  points = 0;
+  threshold = 1.5;
+  
+  for (let i = 0; i < massSprings.length; i++) {
+    if (massSprings[i] instanceof Pin) {
+      if ((massSprings[i].initBoundingBox.max.sub(massSprings[i].currentBoundingBox().max)).len() > threshold) {
+        points++;
+      }
+    }
+  }
 
-	if (points == 10)
-	{
-		console.log("Strike")
-	}
-	else 
-	{
-		console.log("You made " + points + " points!")
-	}
+  if (points == 10) {
+    console.log("Strike");
+  } 
+  else 
+  {
+    console.log("You made " + points + " points!");
+  }
 }
+
 
 function stopPlay() 
 {	
