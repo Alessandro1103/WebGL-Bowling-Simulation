@@ -1092,6 +1092,8 @@ class MassSpring {
 		const dt = timestep / 1000;  // time step in seconds
 		const damping = this.damping * this.stiffness * dt;
 
+		console.log((massSprings[i].initBoundingBox - massSprings[i].currentBoundingBox()).len())
+
 		let cBoundingBox = this.currentBoundingBox();
 		for (let i = 0; i < massSprings.length; i++) {
 			if (massSprings[i] !== this && !(massSprings[i] instanceof Floor)) {
