@@ -23,6 +23,11 @@ let isPlaying = false;
 let keydownListenerMove;
 let keydownListenerSimulate;
 
+let collisionTimer = null;
+const timerDuration = 10000; // Durata del timer in millisecondi (es. 5 secondi)
+
+let initBoundingBoxes_pins = [];
+
 
 
 // Called once to initialize
@@ -136,7 +141,9 @@ function DrawScene() {
 			let MVP = MatrixMult(perspectiveMatrix, MV);
 			let nrmTrans = [MV[0], MV[1], MV[2], MV[4], MV[5], MV[6], MV[8], MV[9], MV[10]];
 
-			massSpring.meshDrawer.draw(MVP, MV, nrmTrans);
+			if (massSpring.isVisible) {
+				massSpring.meshDrawer.draw(MVP, MV, nrmTrans);
+			}			
 		} else {
 			console.warn(`massSpring[${i}] or its meshDrawer is undefined`);
 		}
@@ -946,6 +953,7 @@ class MassSpring {
 		this.damping = 1;
 		this.restitution = .8;
 		this.initialPosition = initialPosition;
+		this.isVisible = true;
 		this.setMesh( objdef );
 	}
 	setMesh( objdef )
@@ -1070,6 +1078,7 @@ class MassSpring {
 		DrawScene();
 	}
 	simTimeStep() {
+
 		let flagCollision = false;
 		let boundingBoxes = [];
 
@@ -1089,7 +1098,17 @@ class MassSpring {
 				let otherBoundingBox = massSprings[i].currentBoundingBox();
 				if (detectAABBCollision(cBoundingBox, otherBoundingBox)) {
 					flagCollision = true;
-					boundingBoxes.push(otherBoundingBox);  // Aggiungi la bounding box rilevata
+					boundingBoxes.push(otherBoundingBox);  
+
+					if (collisionTimer === null) {
+						console.log('Collision detected! Starting background timer...');
+
+						// Avvia il timer in background
+						collisionTimer = setTimeout(() => {
+							console.log('Background timer ended.');
+							stopPlay();
+						}, timerDuration);
+					}
 				}
 			}
 		}
@@ -1099,6 +1118,13 @@ class MassSpring {
 		SimTimeStep_Verlet(dt, this.pos, this.prevPos,this.vel, this.springs, this.stiffness, damping, this.mass, this.gravity, this.restitution, flagCollision, boundingBoxes)
 
 		// SimTimeStep_ImplicitEuler(dt, this.pos, this.vel, this.springs, this.stiffness, damping, this.mass, this.gravity, this.restitution, flagCollision, boundingBoxes);
+
+		const threshold = 6;
+
+		if ((this.currentBoundingBox().max.z + this.currentBoundingBox().min.z)/2 > threshold) 
+		{
+			this.isVisible = false;
+		}
 
 		if (p) {
 			this.holdVert.set(p);
@@ -1220,10 +1246,8 @@ class MassSpring {
 class Pin extends MassSpring {
     constructor(objdef, initialPosition) {
         super(objdef, initialPosition);
-        this.mass = 0.2;
-        this.stiffness = 1;
-        this.damping = 1;
-        this.restitution = 0.8;
+
+		this.initBoundingBox = this.currentBoundingBox();
     }
 }
 
@@ -1771,8 +1795,35 @@ function enableMouseInteractions()
 	}
 }
 
+function computePoints()
+{
+	points = 0;
+	threshold = 
+	for (let i=0; i<massSprings.length; i++)
+	{
+		if (massSprings[i] instanceof Pin) 
+		{
+			if ((massSprings[i].initBoundingBox - massSprings[i].currentBoundingBox()).len() < threshold)
+				points++;
+		}
+	}
+
+	if (points == 10)
+	{
+		console.log("Strike")
+	}
+	else 
+	{
+		console.log("You made " + points + " points!")
+	}
+}
+
 function stopPlay() 
 {	
+	if (timerDuration == 10000) {
+		computePoints();
+	}
+
 	enableMouseInteractions();
 
 	for (let i = 0; i < massSprings.length; i++) {
