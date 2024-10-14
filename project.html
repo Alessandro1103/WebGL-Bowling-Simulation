@@ -1797,24 +1797,48 @@ function enableMouseInteractions()
 }
 
 function computePoints() {
-  points = 0;
-  threshold = 1.5;
-  
-  for (let i = 0; i < massSprings.length; i++) {
-    if (massSprings[i] instanceof Pin) {
-      if ((massSprings[i].initBoundingBox.max.sub(massSprings[i].currentBoundingBox().max)).len() > threshold) {
-        points++;
-      }
-    }
-  }
+	points = 0;
+	threshold = 0.5;
 
-  if (points == 10) {
-    console.log("Strike");
-  } 
-  else 
-  {
-    console.log("You made " + points + " points!");
-  }
+	for (let i = 0; i < massSprings.length; i++) {
+		if (massSprings[i] instanceof Pin) {
+			if ((massSprings[i].initBoundingBox.max.sub(massSprings[i].currentBoundingBox().max)).len() > threshold) {
+			points++;
+			}
+		}
+	}
+
+	if (points === 10) {  
+		const modal = document.getElementById('modal');  
+		const modalBody = modal.querySelector('.modal-body'); // Get the modal body
+
+		// Update the modal content to display the points
+		modalBody.innerText = "🎳 STRIKE! 🎳";
+
+		openModal(modal);  // Open the modal
+	} 
+	else {
+		const modal = document.getElementById('modal');  
+		const modalBody = modal.querySelector('.modal-body'); // Get the modal body
+
+		// Update the modal content to show the points made
+		modalBody.innerText = "You made " + points + " points!";
+
+		openModal(modal);  // Open the modal
+	}
+
+}
+
+function openModal(modal) {
+    if (modal == null) return;
+    modal.classList.add('active');  // Show modal
+    overlay.classList.add('active');  // Show overlay
+}
+
+function closeModal(modal) {
+    if (modal == null) return;
+    modal.classList.remove('active');  // Hide modal
+    overlay.classList.remove('active');  // Hide overlay
 }
 
 
@@ -2194,6 +2218,17 @@ function NewScene() {
 
 </head>
 <body onresize="WindowResize()">
+
+
+	<div class="modal" id="modal">
+		<div class="modal-body">
+			<!-- This text will be dynamically updated -->
+		</div>
+	</div>
+	<div id="overlay"></div>
+	
+	
+
 <div id="canvas-div"><canvas id="canvas"></canvas></div><div id="controls-div">
 <div id="controls">
 <div class="control-group">
