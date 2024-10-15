@@ -689,7 +689,7 @@ function SimTimeStep_Verlet(dt, positions, prevPositions, velocities, springs, s
     var forces = new Array(positions.length);
     for (var i = 0; i < forces.length; ++i) forces[i] = new Vec3(0, 0, 0);
 
-    // Gravità
+
     for (var i = 0; i < positions.length; i++) {
         forces[i] = forces[i].add(gravity.mul(particleMass));
     }
@@ -1121,8 +1121,8 @@ class MassSpring {
 
 		const threshold = 6;
 
-		// if ((this.currentBoundingBox().max.z + this.currentBoundingBox().min.z)/2 > threshold) 
-		if (this.currentBoundingBox().max.z > threshold) 
+		// if (this.currentBoundingBox().max.z > threshold) 
+		if ((this.currentBoundingBox().max.z + this.currentBoundingBox().min.z)/2 > threshold) 
 		{
 			this.isVisible = false;
 		}
@@ -1139,7 +1139,7 @@ class MassSpring {
 	startSimulation() {
 		var timestep = document.getElementById('timestep').value;	
 		if (!this.isSimulationRunning()) {
-			
+
 			this.timer = setInterval(function() {
 				for (let i = 0; i < massSprings.length; i++) {
 					massSprings[i].simTimeStep();
@@ -2003,6 +2003,8 @@ function startPlay()
 			{  
 				let bowlingBall = massSprings.find(item => item instanceof Ball);  
 				
+				var p = bowlingBall.holdVert ? bowlingBall.holdVert.copy() : undefined;
+				
 				if (bowlingBall) 
 				{  
 					const boundingBox = bowlingBall.currentBoundingBox();  
@@ -2029,10 +2031,18 @@ function startPlay()
 							}  
 
 							for (let i = 0; i < bowlingBall.pos.length; i++) {  
-								bowlingBall.pos[i].x += direction;  
-							}  
+								bowlingBall.pos[i].x += direction; 
+								bowlingBall.prevPos[i].x += direction;  
+							}
+							
 
-							Arrows.update(border);  
+							Arrows.update(border);
+							
+							if (p) {
+								this.holdVert.set(p);
+								this.vel[this.selVert].init(0, 0, 0);
+							}
+
 							bowlingBall.updateMesh();  
 							UpdateProjectionMatrix();  
 							DrawScene();  
@@ -2071,10 +2081,22 @@ function shoot(power)
 {
 	var ball = massSprings.find(item => item instanceof Ball);
 
+	for (let i=0; i<ball.pos.length; i++) 
+	{
+		ball.vel[i].x = 0;
+		ball.vel[i].y = 0;
+		ball.vel[i].z = 0;
+		ball.gravity.x = 0;
+		ball.gravity.y = -1;
+		ball.gravity.z = 0;
+	}
+
+	
 	for (let i = 0; i < ball.pos.length; i++) 
 	{
 		ball.gravity.z = power/100 * 1;
 	}
+	// console.log(ball.pos[0], ball.vel[0], ball.gravity)
 
 }
 
@@ -2101,21 +2123,6 @@ function toggleSimulation(button) {
 	}
     
 }
-
-function resetAll() {
-    for (let i = 0; i < massSprings.length; i++) {
-        massSprings[i].reset();
-    }	
-
-	document.querySelector('.arrow-left').style.display = 'none';
-    document.querySelector('.arrow-right').style.display = 'none';
-	document.getElementById('powerIndicator').style.display = 'none';
-
-    isPlaying = false;
-
-	canvas.ondblclick = canvas.resetView;
-}
-
 
 function restartAllSimulations() {
     for (let i = 0; i < massSprings.length; i++) {
@@ -2235,7 +2242,6 @@ function NewScene() {
 	<canvas id="lightcontrol"></canvas><div id="lightcontrol-label">Light Direction</div></div>
 <div class="control-group">
 	<div class="control"><input type="button" value="Start Play" onclick="toggleSimulation(this)"></div>
-	<div class="control"><input type="button" value="Reset" onclick="resetAll(); DrawScene();"></div>
 		
 	<div class="control"><span id="timestep-label">Time Step Size:</span><span class="value" id="timestep-value">20 ms</span><input id="timestep" type="range" min="1" max="100" value="20" oninput="SetTimeStepSize(this)" onchange="restartAllSimulations()" ondblclick="this.value=20;this.oninput();this.onchange()"/></div>
 	
